@@ -1,19 +1,28 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import os
 
-# -----------------------------
-# Simple login config
-# -----------------------------
-USERS = {
-    "admin": "admin123",
-    "ackson": "password"
-}
+# ============================================================
+#  USERS CSV HANDLING
+# ============================================================
 
-# -----------------------------
-# Load & Save CSV
-# -----------------------------
-def load_data():
+USERS_FILE = "users.csv"
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        df = pd.DataFrame(columns=["username", "password", "role"])
+        df.to_csv(USERS_FILE, index=False)
+    return pd.read_csv(USERS_FILE)
+
+def save_users(df):
+    df.to_csv(USERS_FILE, index=False)
+
+# ============================================================
+#  STOCK & SALES CSV HANDLING
+# ============================================================
+
+def load_stock():
     try:
         return pd.read_csv("stock_clean.csv")
     except:
@@ -23,7 +32,7 @@ def load_data():
             "Price", "Total Value", "Stock Status"
         ])
 
-def save_data(df):
+def save_stock(df):
     df.to_csv("stock_clean.csv", index=False)
 
 def load_sales():
@@ -39,12 +48,10 @@ def load_sales():
 def save_sales(df):
     df.to_csv("sales.csv", index=False)
 
-df = load_data()
-sales_df = load_sales()
+# ============================================================
+#  HELPERS
+# ============================================================
 
-# -----------------------------
-# Helpers
-# -----------------------------
 def compute_status(available, reorder):
     if available == 0:
         return "Out of Stock"
@@ -53,112 +60,171 @@ def compute_status(available, reorder):
     else:
         return "In Stock"
 
-def card_container(title, value, color="#0078D4"):
+def card(title, value, color="#0078D4"):
     return f"""
     <div style="
-        background-color: white;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-        border-left: 6px solid {color};
-        margin-bottom: 15px;
-    ">
-        <h4 style="margin: 0; color: #444;">{title}</h4>
-        <h2 style="margin: 5px 0 0 0; color: #222;">{value}</h2>
+        background:white;
+        padding:20px;
+        border-radius:12px;
+        box-shadow:0 2px 8px rgba(0,0,0,0.15);
+        border-left:6px solid {color};
+        margin-bottom:15px;">
+        <h4 style="margin:0;color:#444;">{title}</h4>
+        <h2 style="margin:5px 0 0 0;color:#222;">{value}</h2>
     </div>
     """
 
-def section_header(text):
+def header(text):
     st.markdown(
         f"""
-        <h2 style="
-            color: #0078D4;
-            padding-bottom: 5px;
-            border-bottom: 2px solid #E5E5E5;
-            margin-top: 20px;
-        ">{text}</h2>
+        <h2 style="color:#0078D4;border-bottom:2px solid #E5E5E5;padding-bottom:5px;">
+            {text}
+        </h2>
         """,
         unsafe_allow_html=True
     )
 
-def login_form():
-    st.markdown(
-        """
-        <h1 style="color:#0078D4; text-align:center;">🔐 Login</h1>
-        """,
-        unsafe_allow_html=True
-    )
+# ============================================================
+#  LOGIN PAGE
+# ============================================================
+
+def login_page():
+    st.markdown("<h1 style='color:#0078D4;text-align:center;'>🔐 Login</h1>", unsafe_allow_html=True)
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
-    login_btn = st.button("Login")
 
-    if login_btn:
-        if username in USERS and USERS[username] == password:
+    if st.button("Login"):
+        users = load_users()
+        match = users[(users["username"] == username) & (users["password"] == password)]
+
+        if not match.empty:
             st.session_state["logged_in"] = True
             st.session_state["username"] = username
+            st.session_state["role"] = match.iloc[0]["role"]
             st.success("Login successful!")
         else:
             st.error("Invalid username or password.")
 
-# -----------------------------
-# Streamlit Page Setup
-# -----------------------------
+# ============================================================
+#  MANAGE USERS (ADMIN ONLY)
+# ============================================================
+
+def manage_users_page():
+    header("👥 Manage Users (Admin Only)")
+
+    users = load_users()
+
+    st.subheader("Add New User")
+    new_user = st.text_input("New Username")
+    new_pass = st.text_input("New Password", type="password")
+    new_role = st.selectbox("Role", ["admin", "staff", "viewer"])
+
+    if st.button("Add User"):
+        if new_user in users["username"].values:
+            st.error("Username already exists.")
+        else:
+            users.loc[len(users)] = [new_user, new_pass, new_role]
+            save_users(users)
+            st.success("User added successfully!")
+
+    st.subheader("Existing Users")
+    st.dataframe(users)
+
+    st.subheader("Edit / Delete User")
+    selected = st.selectbox("Select User", users["username"].tolist())
+
+    if selected:
+        row = users[users["username"] == selected].iloc[0]
+
+        edit_pass = st.text_input("Password", value=row["password"], type="password")
+        edit_role = st.selectbox("Role", ["admin", "staff", "viewer"], index=["admin","staff","viewer"].index(row["role"]))
+
+        if st.button("Save Changes"):
+            users.loc[users["username"] == selected, "password"] = edit_pass
+            users.loc[users["username"] == selected, "role"] = edit_role
+            save_users(users)
+            st.success("User updated successfully!")
+
+        if st.button("Delete User"):
+            if selected == st.session_state["username"]:
+                st.warning("Are you sure you want to delete your own account? This action cannot be undone.")
+                if st.button("Confirm Delete"):
+                    users = users[users["username"] != selected]
+                    save_users(users)
+                    st.session_state.clear()
+                    st.success("Your account has been deleted. Logging out...")
+                    st.stop()
+            else:
+                users = users[users["username"] != selected]
+                save_users(users)
+                st.success("User deleted successfully!")
+
+# ============================================================
+#  MAIN APP
+# ============================================================
+
 st.set_page_config(page_title="Automated Stock Management System", layout="wide")
 
-# Session state defaults
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
-if "username" not in st.session_state:
-    st.session_state["username"] = None
 
-# If not logged in → show login screen only
 if not st.session_state["logged_in"]:
-    login_form()
+    login_page()
     st.stop()
 
-# -----------------------------
-# Main app (only after login)
-# -----------------------------
-st.markdown(
-    """
-    <h1 style="color:#0078D4; font-weight:700;">📦 Automated Stock Management System</h1>
-    """,
-    unsafe_allow_html=True
-)
+# Load data
+df = load_stock()
+sales_df = load_sales()
 
-# Sidebar with user info + logout
+# Sidebar
 st.sidebar.markdown(
     f"""
-    <div style="padding:10px; background:#F3F9FF; border-radius:8px; border-left:4px solid #0078D4;">
-        <strong>👤 Logged in as:</strong><br>{st.session_state['username']}
+    <div style="padding:10px;background:#F3F9FF;border-radius:8px;border-left:4px solid #0078D4;">
+        <strong>👤 Logged in as:</strong><br>{st.session_state['username']} ({st.session_state['role']})
     </div>
     """,
     unsafe_allow_html=True
 )
 
 if st.sidebar.button("Logout"):
-    st.session_state["logged_in"] = False
-    st.session_state["username"] = None
+    st.session_state.clear()
     st.experimental_rerun()
 
-menu = [
-    "Dashboard",
-    "Search Items",
-    "Add New Item",
-    "Receive Stock (by Code)",
-    "Issue Stock (by Code)",
-    "Sales Tracking",
-    "Current Stock"
+role = st.session_state["role"]
+
+# ============================================================
+#  ROLE-BASED MENU
+# ============================================================
+
+menu_admin = [
+    "Dashboard", "Search Items", "Add New Item",
+    "Receive Stock", "Issue Stock", "Sales Tracking",
+    "Current Stock", "Manage Users"
 ]
 
-choice = st.sidebar.selectbox("Menu", menu)
+menu_staff = [
+    "Dashboard", "Search Items",
+    "Receive Stock", "Issue Stock", "Current Stock"
+]
 
-# -----------------------------
-# Dashboard
-# -----------------------------
+menu_viewer = [
+    "Dashboard", "Current Stock"
+]
+
+if role == "admin":
+    choice = st.sidebar.selectbox("Menu", menu_admin)
+elif role == "staff":
+    choice = st.sidebar.selectbox("Menu", menu_staff)
+else:
+    choice = st.sidebar.selectbox("Menu", menu_viewer)
+
+# ============================================================
+#  DASHBOARD
+# ============================================================
+
 if choice == "Dashboard":
-    section_header("📊 System Overview")
+    header("📊 System Overview")
 
     if df.empty:
         st.warning("No stock data available.")
@@ -171,41 +237,40 @@ if choice == "Dashboard":
         col1, col2 = st.columns(2)
         col3, col4 = st.columns(2)
 
-        col1.markdown(card_container("Total Items", total_items), unsafe_allow_html=True)
-        col2.markdown(card_container("Total Stock Value (USD)", f"${total_value:,.2f}"), unsafe_allow_html=True)
-        col3.markdown(card_container("Low Stock Items", low_stock, "#FFB900"), unsafe_allow_html=True)
-        col4.markdown(card_container("Out of Stock", out_stock, "#D83B01"), unsafe_allow_html=True)
+        col1.markdown(card("Total Items", total_items), unsafe_allow_html=True)
+        col2.markdown(card("Total Stock Value (USD)", f"${total_value:,.2f}"), unsafe_allow_html=True)
+        col3.markdown(card("Low Stock Items", low_stock, "#FFB900"), unsafe_allow_html=True)
+        col4.markdown(card("Out of Stock", out_stock, "#D83B01"), unsafe_allow_html=True)
 
         if not sales_df.empty:
             total_profit = sales_df["Profit"].sum()
-            st.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
+            st.markdown(card("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
 
-# -----------------------------
-# Search Items
-# -----------------------------
+# ============================================================
+#  SEARCH ITEMS
+# ============================================================
+
 elif choice == "Search Items":
-    section_header("🔍 Search Inventory")
+    header("🔍 Search Inventory")
     term = st.text_input("Search by item name, code, or brand")
 
     if term:
-        filtered = df[df.apply(
-            lambda row: term.lower() in row.astype(str).str.lower().to_string(),
-            axis=1
-        )]
+        filtered = df[df.apply(lambda row: term.lower() in row.astype(str).str.lower().to_string(), axis=1)]
         st.dataframe(filtered)
 
-# -----------------------------
-# Add New Item
-# -----------------------------
-elif choice == "Add New Item":
-    section_header("➕ Add New Stock Item")
+# ============================================================
+#  ADD NEW ITEM (ADMIN ONLY)
+# ============================================================
+
+elif choice == "Add New Item" and role == "admin":
+    header("➕ Add New Stock Item")
 
     col1, col2 = st.columns(2)
 
     with col1:
         category = st.text_input("Category")
         item = st.text_input("Item Name")
-        item_code = st.text_input("Item Code (scan or type)")
+        item_code = st.text_input("Item Code")
         brand = st.text_input("Brand")
 
     with col2:
@@ -216,173 +281,120 @@ elif choice == "Add New Item":
 
     if st.button("Add Item"):
         if not category or not item or not item_code or not brand:
-            st.error("All text fields are required.")
+            st.error("All fields are required.")
         elif item_code in df["Item Code"].astype(str).values:
-            st.error("An item with this Item Code already exists.")
+            st.error("Item Code already exists.")
         else:
             total_value = available * price
             status = compute_status(available, reorder)
 
-            new_row = {
-                "Category": category,
-                "Item": item,
-                "Item Code": item_code,
-                "Brand": brand,
-                "Available Stock": available,
-                "Reorder Level": reorder,
-                "Cost Price": cost_price,
-                "Price": price,
-                "Total Value": total_value,
-                "Stock Status": status
-            }
+            df.loc[len(df)] = [
+                category, item, item_code, brand,
+                available, reorder, cost_price,
+                price, total_value, status
+            ]
 
-            df.loc[len(df)] = new_row
-            save_data(df)
+            save_stock(df)
             st.success(f"{item} added successfully!")
 
-# -----------------------------
-# Receive Stock (by Code)
-# -----------------------------
-elif choice == "Receive Stock (by Code)":
-    section_header("📥 Receive Stock")
+# ============================================================
+#  RECEIVE STOCK
+# ============================================================
 
-    if df.empty:
-        st.warning("No items available.")
-    else:
-        code = st.text_input("Item Code (scan or type)")
-        item_row = None
+elif choice == "Receive Stock":
+    header("📥 Receive Stock")
 
-        if code:
-            matches = df[df["Item Code"].astype(str) == str(code)]
-            if matches.empty:
-                st.error("No item found with that Item Code.")
-            else:
-                item_row = matches.iloc[0]
-                st.info(f"Found: {item_row['Item']} ({item_row['Brand']})")
-                st.write(f"**Current Stock:** {item_row['Available Stock']}")
-                st.write(f"**Cost Price:** ${item_row['Cost Price']}")
-                st.write(f"**Selling Price:** ${item_row['Price']}")
+    code = st.text_input("Item Code")
+    qty = st.number_input("Quantity Received", min_value=1)
 
-        qty = st.number_input("Quantity Received", min_value=1)
+    if st.button("Update Stock"):
+        matches = df[df["Item Code"].astype(str) == str(code)]
+        if matches.empty:
+            st.error("Item not found.")
+        else:
+            idx = matches.index[0]
+            df.at[idx, "Available Stock"] += qty
+            df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+            df.at[idx, "Stock Status"] = compute_status(df.at[idx, "Available Stock"], df.at[idx, "Reorder Level"])
+            save_stock(df)
+            st.success("Stock updated!")
 
-        if st.button("Update Stock"):
-            if item_row is None:
-                st.error("Enter a valid Item Code first.")
-            else:
-                idx = df.index[df["Item Code"].astype(str) == str(code)][0]
-                df.at[idx, "Available Stock"] += qty
-                df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
-                df.at[idx, "Stock Status"] = compute_status(
-                    df.at[idx, "Available Stock"],
-                    df.at[idx, "Reorder Level"]
-                )
-                save_data(df)
-                st.success("Stock updated!")
+# ============================================================
+#  ISSUE STOCK
+# ============================================================
 
-# -----------------------------
-# Issue Stock (by Code)
-# -----------------------------
-elif choice == "Issue Stock (by Code)":
-    section_header("📤 Issue Stock")
+elif choice == "Issue Stock":
+    header("📤 Issue Stock")
 
-    if df.empty:
-        st.warning("No items available.")
-    else:
-        code = st.text_input("Item Code (scan or type)")
-        item_row = None
+    code = st.text_input("Item Code")
+    qty = st.number_input("Quantity to Issue", min_value=1)
 
-        if code:
-            matches = df[df["Item Code"].astype(str) == str(code)]
-            if matches.empty:
-                st.error("No item found with that Item Code.")
-            else:
-                item_row = matches.iloc[0]
-                st.info(f"Found: {item_row['Item']} ({item_row['Brand']})")
-                st.write(f"**Available Stock:** {item_row['Available Stock']}")
-                st.write(f"**Cost Price:** ${item_row['Cost Price']}")
-                st.write(f"**Selling Price:** ${item_row['Price']}")
-
-        qty = st.number_input("Quantity to Issue", min_value=1)
-
-        if st.button("Issue"):
-            if item_row is None:
-                st.error("Enter a valid Item Code first.")
-            elif qty > item_row["Available Stock"]:
+    if st.button("Issue"):
+        matches = df[df["Item Code"].astype(str) == str(code)]
+        if matches.empty:
+            st.error("Item not found.")
+        else:
+            row = matches.iloc[0]
+            if qty > row["Available Stock"]:
                 st.error("Not enough stock!")
             else:
-                idx = df.index[df["Item Code"].astype(str) == str(code)][0]
-
+                idx = matches.index[0]
                 df.at[idx, "Available Stock"] -= qty
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
-                df.at[idx, "Stock Status"] = compute_status(
-                    df.at[idx, "Available Stock"],
-                    df.at[idx, "Reorder Level"]
-                )
-                save_data(df)
-
-                selling_price = item_row["Price"]
-                cost_price = item_row["Cost Price"]
-                total_sale = qty * selling_price
-                total_cost = qty * cost_price
-                profit = total_sale - total_cost
+                df.at[idx, "Stock Status"] = compute_status(df.at[idx, "Available Stock"], df.at[idx, "Reorder Level"])
+                save_stock(df)
 
                 sale = {
-                    "Item": item_row["Item"],
-                    "Item Code": item_row["Item Code"],
+                    "Item": row["Item"],
+                    "Item Code": row["Item Code"],
                     "Quantity Sold": qty,
-                    "Selling Price": selling_price,
-                    "Cost Price": cost_price,
-                    "Total Sale": total_sale,
-                    "Total Cost": total_cost,
-                    "Profit": profit,
+                    "Selling Price": row["Price"],
+                    "Cost Price": row["Cost Price"],
+                    "Total Sale": qty * row["Price"],
+                    "Total Cost": qty * row["Cost Price"],
+                    "Profit": qty * (row["Price"] - row["Cost Price"]),
                     "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
 
                 sales_df.loc[len(sales_df)] = sale
                 save_sales(sales_df)
 
-                st.success(f"Sale recorded! Profit: ${profit:,.2f}")
+                st.success(f"Sale recorded! Profit: ${sale['Profit']:,.2f}")
 
-# -----------------------------
-# Sales Tracking
-# -----------------------------
-elif choice == "Sales Tracking":
-    section_header("💰 Sales Tracking")
+# ============================================================
+#  SALES TRACKING (ADMIN ONLY)
+# ============================================================
+
+elif choice == "Sales Tracking" and role == "admin":
+    header("💰 Sales Tracking")
 
     if sales_df.empty:
         st.info("No sales recorded yet.")
     else:
-        st.subheader("📄 All Sales Records")
-        st.dataframe(sales_df, use_container_width=True)
+        st.subheader("All Sales Records")
+        st.dataframe(sales_df)
 
-        st.subheader("🏆 Best‑Selling Items")
-
-        best = sales_df.groupby(["Item", "Item Code"]).agg({
-            "Quantity Sold": "sum",
-            "Total Sale": "sum",
-            "Total Cost": "sum",
-            "Profit": "sum"
-        }).sort_values("Quantity Sold", ascending=False)
-
-        st.dataframe(best, use_container_width=True)
-
-        st.subheader("📈 Profit Summary")
+        st.subheader("Profit Summary")
         total_revenue = sales_df["Total Sale"].sum()
         total_cost = sales_df["Total Cost"].sum()
         total_profit = sales_df["Profit"].sum()
 
         col1, col2, col3 = st.columns(3)
-        col1.markdown(card_container("Total Revenue (USD)", f"${total_revenue:,.2f}", "#0078D4"), unsafe_allow_html=True)
-        col2.markdown(card_container("Total Cost (USD)", f"${total_cost:,.2f}", "#FFB900"), unsafe_allow_html=True)
-        col3.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
+        col1.markdown(card("Total Revenue (USD)", f"${total_revenue:,.2f}"), unsafe_allow_html=True)
+        col2.markdown(card("Total Cost (USD)", f"${total_cost:,.2f}", "#FFB900"), unsafe_allow_html=True)
+        col3.markdown(card("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
 
-# -----------------------------
-# Current Stock
-# -----------------------------
+# ============================================================
+#  CURRENT STOCK
+# ============================================================
+
 elif choice == "Current Stock":
-    section_header("📦 Current Stock List")
+    header("📦 Current Stock List")
+    st.dataframe(df)
 
-    if df.empty:
-        st.warning("No stock data available.")
-    else:
-        st.dataframe(df, use_container_width=True)
+# ============================================================
+#  MANAGE USERS (ADMIN ONLY)
+# ============================================================
+
+elif choice == "Manage Users" and role == "admin":
+    manage_users_page()
