@@ -137,7 +137,7 @@ def manage_users_page():
     st.subheader("Add New User")
     new_user = st.text_input("New Username")
     new_pass = st.text_input("New Password", type="password")
-    new_role = st.selectbox("Role", ["admin", "staff", "viewer"])
+    new_role = st.selectbox("Role", ["admin", "staff", "viewer"], key="new_role")
 
     if st.button("Add User"):
         if new_user.lower() in users["username"].str.lower().values:
@@ -151,32 +151,33 @@ def manage_users_page():
     st.dataframe(users)
 
     st.subheader("Edit / Delete User")
-    selected = st.selectbox("Select User", users["username"].tolist())
+    selected = st.selectbox("Select User", users["username"].tolist(), key="select_user")
 
     if selected:
         row = users[users["username"] == selected].iloc[0]
 
-        edit_pass = st.text_input("Password", value=row["password"], type="password")
+        edit_pass = st.text_input("Password", value=row["password"], type="password", key=f"pass_{selected}")
         edit_role = st.selectbox(
             "Role",
             ["admin", "staff", "viewer"],
-            index=["admin", "staff", "viewer"].index(row["role"])
+            index=["admin", "staff", "viewer"].index(row["role"]),
+            key=f"edit_role_{selected}"
         )
 
-        if st.button("Save Changes"):
+        if st.button("Save Changes", key=f"save_{selected}"):
             users.loc[users["username"] == selected, "password"] = edit_pass
             users.loc[users["username"] == selected, "role"] = edit_role
             save_users(users)
             st.success("User updated successfully!")
 
-        if st.button("Delete User"):
+        if st.button("Delete User", key=f"delete_{selected}"):
             if selected == st.session_state.get("username"):
-                st.warning("Are you sure you want to delete your own account? This action cannot be undone.")
-                if st.button("Confirm Delete"):
+                st.warning("You are deleting your own account. Confirm below.")
+                if st.button("Confirm Delete", key=f"confirm_delete_{selected}"):
                     users = users[users["username"] != selected]
                     save_users(users)
                     st.session_state.clear()
-                    st.success("Your account has been deleted. Logging out...")
+                    st.success("Your account has been deleted.")
                     st.stop()
             else:
                 users = users[users["username"] != selected]
@@ -200,7 +201,7 @@ if not st.session_state["logged_in"]:
 df = load_stock()
 sales_df = load_sales()
 
-# Sidebar user info (SAFE)
+# Sidebar user info
 if "username" in st.session_state and "role" in st.session_state:
     st.sidebar.markdown(
         f"""
