@@ -242,7 +242,7 @@ elif choice == "Issue Stock (by Code)":
                 st.success("Stock issued and sale recorded!")
 
 # -----------------------------
-# Sales Tracking
+# Sales Tracking + BEST SELLERS
 # -----------------------------
 elif choice == "Sales Tracking":
     st.header("💰 Sales Tracking")
@@ -250,7 +250,17 @@ elif choice == "Sales Tracking":
     if sales_df.empty:
         st.info("No sales recorded yet.")
     else:
+        st.subheader("📄 All Sales Records")
         st.dataframe(sales_df, use_container_width=True)
+
+        st.subheader("🏆 Best‑Selling Items")
+
+        best = sales_df.groupby(["Item", "Item Code"]).agg({
+            "Quantity Sold": "sum",
+            "Total Sale": "sum"
+        }).sort_values("Quantity Sold", ascending=False)
+
+        st.dataframe(best, use_container_width=True)
 
 # -----------------------------
 # Current Stock
