@@ -3,6 +3,14 @@ import pandas as pd
 from datetime import datetime
 
 # -----------------------------
+# Simple login config (demo only)
+# -----------------------------
+USERS = {
+    "admin": "admin123",   # username: password
+    "ackson": "password"   # you can change or remove this
+}
+
+# -----------------------------
 # Load & Save CSV
 # -----------------------------
 def load_data():
@@ -45,11 +53,48 @@ def compute_status(available, reorder):
     else:
         return "In Stock"
 
+def login_form():
+    st.title("🔐 Login - Automated Stock Management System")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    login_btn = st.button("Login")
+
+    if login_btn:
+        if username in USERS and USERS[username] == password:
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = username
+            st.success("Login successful! Reloading...")
+            st.experimental_rerun()
+        else:
+            st.error("Invalid username or password.")
+
 # -----------------------------
 # Streamlit Page Setup
 # -----------------------------
 st.set_page_config(page_title="Automated Stock Management System", layout="wide")
+
+# Session state defaults
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "username" not in st.session_state:
+    st.session_state["username"] = None
+
+# If not logged in → show login screen only
+if not st.session_state["logged_in"]:
+    login_form()
+    st.stop()
+
+# -----------------------------
+# Main app (only after login)
+# -----------------------------
 st.title("📦 Automated Stock Management System")
+
+# Sidebar with user info + logout
+st.sidebar.write(f"👤 Logged in as: **{st.session_state['username']}**")
+if st.sidebar.button("Logout"):
+    st.session_state["logged_in"] = False
+    st.session_state["username"] = None
+    st.experimental_rerun()
 
 menu = [
     "Dashboard",
@@ -89,7 +134,6 @@ if choice == "Dashboard":
         if low_stock > 0:
             st.warning(f"⚠ {low_stock} items are LOW on stock!")
 
-        # Optional: total profit metric
         if not sales_df.empty:
             total_profit = sales_df["Profit"].sum()
             st.metric("Total Profit (ZMW)", f"{total_profit:,.2f}")
