@@ -20,6 +20,17 @@ def save_data(df):
 df = load_data()
 
 # -----------------------------
+# Helpers
+# -----------------------------
+def compute_status(available, reorder):
+    if available == 0:
+        return "Out of Stock"
+    elif available <= reorder:
+        return "Low Stock"
+    else:
+        return "In Stock"
+
+# -----------------------------
 # Streamlit Page Setup
 # -----------------------------
 st.set_page_config(page_title="Automated Stock Management System", layout="wide")
@@ -29,8 +40,8 @@ menu = [
     "Dashboard",
     "Search Items",
     "Add New Item",
-    "Receive Stock",
-    "Issue Stock",
+    "Receive Stock (by Code)",
+    "Issue Stock (by Code)",
     "Current Stock"
 ]
 
@@ -81,7 +92,7 @@ elif choice == "Add New Item":
     with col1:
         category = st.text_input("Category")
         item = st.text_input("Item Name")
-        item_code = st.text_input("Item Code")
+        item_code = st.text_input("Item Code (scan or type)")
         brand = st.text_input("Brand")
 
     with col2:
@@ -92,15 +103,11 @@ elif choice == "Add New Item":
     if st.button("Add Item"):
         if not category or not item or not item_code or not brand:
             st.error("All text fields are required.")
+        elif item_code in df["Item Code"].astype(str).values:
+            st.error("An item with this Item Code already exists.")
         else:
             total_value = available * price
-
-            if available == 0:
-                status = "Out of Stock"
-            elif available <= reorder:
-                status = "Low Stock"
-            else:
-                status = "In Stock"
+            status = compute_status(available, reorder)
 
             new_row = {
                 "Category": category,
@@ -119,81 +126,81 @@ elif choice == "Add New Item":
             st.success(f"{item} added successfully!")
 
 # -----------------------------
-# Receive Stock
+# Receive Stock (by Code)
 # -----------------------------
-elif choice == "Receive Stock":
-    st.header("📥 Receive Stock")
+elif choice == "Receive Stock (by Code)":
+    st.header("📥 Receive Stock (Scan/Enter Item Code)")
 
     if df.empty:
         st.warning("No items available.")
     else:
-        item_name = st.selectbox("Select Item", df["Item"].unique())
-        item_row = df[df["Item"] == item_name].iloc[0]
+        code = st.text_input("Item Code (scan or type)")
+        item_row = None
 
-        st.write(f"**Category:** {item_row['Category']}")
-        st.write(f"**Brand:** {item_row['Brand']}")
-        st.write(f"**Price:** ZMW {item_row['Price']}")
+        if code:
+            matches = df[df["Item Code"].astype(str) == str(code)]
+            if matches.empty:
+                st.error("No item found with that Item Code.")
+            else:
+                item_row = matches.iloc[0]
+                st.success(f"Found: {item_row['Item']} ({item_row['Brand']})")
+                st.write(f"**Category:** {item_row['Category']}")
+                st.write(f"**Current Stock:** {item_row['Available Stock']}")
+                st.write(f"**Price:** ZMW {item_row['Price']}")
 
         qty = st.number_input("Quantity Received", min_value=1)
 
         if st.button("Update Stock"):
-            df.loc[df["Item"] == item_name, "Available Stock"] += qty
-            df.loc[df["Item"] == item_name, "Total Value"] = (
-                df.loc[df["Item"] == item_name, "Available Stock"] *
-                df.loc[df["Item"] == item_name, "Price"]
-            )
-
-            new_stock = df.loc[df["Item"] == item_name, "Available Stock"].values[0]
-            reorder = df.loc[df["Item"] == item_name, "Reorder Level"].values[0]
-
-            if new_stock == 0:
-                status = "Out of Stock"
-            elif new_stock <= reorder:
-                status = "Low Stock"
+            if item_row is None:
+                st.error("Enter a valid Item Code first.")
             else:
-                status = "In Stock"
-
-            df.loc[df["Item"] == item_name, "Stock Status"] = status
-            save_data(df)
-            st.success("Stock updated!")
+                idx = df.index[df["Item Code"].astype(str) == str(code)][0]
+                df.at[idx, "Available Stock"] += qty
+                df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+                df.at[idx, "Stock Status"] = compute_status(
+                    df.at[idx, "Available Stock"],
+                    df.at[idx, "Reorder Level"]
+                )
+                save_data(df)
+                st.success("Stock updated!")
 
 # -----------------------------
-# Issue Stock
+# Issue Stock (by Code)
 # -----------------------------
-elif choice == "Issue Stock":
-    st.header("📤 Issue Stock")
+elif choice == "Issue Stock (by Code)":
+    st.header("📤 Issue Stock (Scan/Enter Item Code)")
 
     if df.empty:
         st.warning("No items available.")
     else:
-        item_name = st.selectbox("Select Item", df["Item"].unique())
-        item_row = df[df["Item"] == item_name].iloc[0]
+        code = st.text_input("Item Code (scan or type)")
+        item_row = None
 
-        st.write(f"**Available Stock:** {item_row['Available Stock']}")
+        if code:
+            matches = df[df["Item Code"].astype(str) == str(code)]
+            if matches.empty:
+                st.error("No item found with that Item Code.")
+            else:
+                item_row = matches.iloc[0]
+                st.success(f"Found: {item_row['Item']} ({item_row['Brand']})")
+                st.write(f"**Available Stock:** {item_row['Available Stock']}")
+                st.write(f"**Price:** ZMW {item_row['Price']}")
 
         qty = st.number_input("Quantity to Issue", min_value=1)
 
         if st.button("Issue"):
-            if qty > item_row["Available Stock"]:
+            if item_row is None:
+                st.error("Enter a valid Item Code first.")
+            elif qty > item_row["Available Stock"]:
                 st.error("Not enough stock!")
             else:
-                df.loc[df["Item"] == item_name, "Available Stock"] -= qty
-                df.loc[df["Item"] == item_name, "Total Value"] = (
-                    df.loc[df["Item"] == item_name, "Available Stock"] *
-                    df.loc[df["Item"] == item_name, "Price"]
+                idx = df.index[df["Item Code"].astype(str) == str(code)][0]
+                df.at[idx, "Available Stock"] -= qty
+                df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+                df.at[idx, "Stock Status"] = compute_status(
+                    df.at[idx, "Available Stock"],
+                    df.at[idx, "Reorder Level"]
                 )
-
-                new_stock = df.loc[df["Item"] == item_name, "Available Stock"].values[0]
-                reorder = df.loc[df["Item"] == item_name, "Reorder Level"].values[0]
-
-                if new_stock == 0:
-                    status = "Out of Stock"
-                elif new_stock <= reorder:
-                    status = "Low Stock"
-                else:
-                    status = "In Stock"
-
-                df.loc[df["Item"] == item_name, "Stock Status"] = status
                 save_data(df)
                 st.success("Stock issued!")
 
