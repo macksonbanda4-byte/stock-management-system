@@ -30,6 +30,14 @@ def load_users() -> pd.DataFrame:
 def save_users(df: pd.DataFrame) -> None:
     df.to_csv(USERS_FILE, index=False)
 
+def compute_status(available: float, reorder: float) -> str:
+    if available <= 0:
+        return "Out of Stock"
+    elif available <= reorder:
+        return "Low Stock"
+    else:
+        return "In Stock"
+
 def load_stock() -> pd.DataFrame:
     cols = [
         "Category", "Item", "Item Code", "Brand",
@@ -37,7 +45,6 @@ def load_stock() -> pd.DataFrame:
         "Price", "Total Value", "Stock Status"
     ]
     df = ensure_file(STOCK_FILE, cols)
-    # Ensure numeric columns
     for c in ["Available Stock", "Reorder Level", "Cost Price", "Price", "Total Value"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
@@ -90,14 +97,6 @@ def log_activity(user: str, action: str, details: str = "") -> None:
 # ============================================================
 #  UI HELPERS
 # ============================================================
-
-def compute_status(available: float, reorder: float) -> str:
-    if available <= 0:
-        return "Out of Stock"
-    elif available <= reorder:
-        return "Low Stock"
-    else:
-        return "In Stock"
 
 def card(title, value, color="#0078D4"):
     return f"""
@@ -480,6 +479,97 @@ def activity_log_page():
 
 def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     header("📊 System Overview")
+
+    # ============================
+    # QUICK BARCODE SCAN PANEL
+    # ============================
+    st.subheader("🔍 Quick Barcode Scan")
+
+    scan_code = st.text_input("Scan Barcode / Enter Item Code", key="dash_scan_code")
+
+    if scan_code:
+        match = df[df["Item Code"].astype(str) == scan_code]
+
+        if match.empty:
+            st.error("No item found with that barcode.")
+        else:
+            item = match.iloc[0]
+
+            st.success("Item Found")
+
+            st.markdown(f"""
+                **Item:** {item['Item']}  
+                **Brand:** {item['Brand']}  
+                **Available Stock:** {item['Available Stock']}  
+                **Price:** ${item['Price']:.2f}  
+                **Status:** {item['Stock Status']}
+            """)
+
+            colA, colB = st.columns(2)
+
+            with colA:
+                qty_receive = st.number_input(
+                    "Quantity to Receive",
+                    min_value=1,
+                    key="dash_receive_qty"
+                )
+                if st.button("Receive Stock", key="dash_receive_btn"):
+                    idx = match.index[0]
+                    df.at[idx, "Available Stock"] += qty_receive
+                    df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+                    df.at[idx, "Stock Status"] = compute_status(
+                        df.at[idx, "Available Stock"],
+                        df.at[idx, "Reorder Level"]
+                    )
+                    save_stock(df)
+                    log_activity(
+                        st.session_state["username"],
+                        "receive_stock_dashboard",
+                        f"Received {qty_receive} of {item['Item']} ({item['Item Code']}) via dashboard"
+                    )
+                    st.success("Stock updated successfully.")
+
+            with colB:
+                qty_issue = st.number_input(
+                    "Quantity to Issue",
+                    min_value=1,
+                    key="dash_issue_qty"
+                )
+                if st.button("Issue Stock", key="dash_issue_btn"):
+                    if qty_issue > item["Available Stock"]:
+                        st.error("Not enough stock to issue.")
+                    else:
+                        idx = match.index[0]
+                        df.at[idx, "Available Stock"] -= qty_issue
+                        df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+                        df.at[idx, "Stock Status"] = compute_status(
+                            df.at[idx, "Available Stock"],
+                            df.at[idx, "Reorder Level"]
+                        )
+                        save_stock(df)
+
+                        sale = {
+                            "Item": item["Item"],
+                            "Item Code": item["Item Code"],
+                            "Quantity Sold": qty_issue,
+                            "Selling Price": item["Price"],
+                            "Cost Price": item["Cost Price"],
+                            "Total Sale": qty_issue * item["Price"],
+                            "Total Cost": qty_issue * item["Cost Price"],
+                            "Profit": qty_issue * (item["Price"] - item["Cost Price"]),
+                            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+
+                        sales_df.loc[len(sales_df)] = sale
+                        save_sales(sales_df)
+
+                        log_activity(
+                            st.session_state["username"],
+                            "issue_stock_dashboard",
+                            f"Issued {qty_issue} of {item['Item']} ({item['Item Code']}) via dashboard"
+                        )
+
+                        st.success(f"Issued successfully. Profit: ${sale['Profit']:.2f}")
 
     if df.empty:
         st.warning("No stock data available.")
