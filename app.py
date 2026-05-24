@@ -45,9 +45,10 @@ def load_stock() -> pd.DataFrame:
         "Price", "Total Value", "Stock Status"
     ]
     df = ensure_file(STOCK_FILE, cols)
-    for c in ["Available Stock", "Reorder Level", "Cost Price", "Price", "Total Value"]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+    for c in df.columns:
+        if c in ["Category", "Item", "Item Code", "Brand", "Stock Status"]:
+            continue
+        df[c] = pd.to_numeric(df[c], errors="ignore")
     if "Stock Status" not in df.columns:
         df["Stock Status"] = df.apply(
             lambda r: compute_status(r.get("Available Stock", 0), r.get("Reorder Level", 0)),
@@ -79,6 +80,43 @@ def load_activity() -> pd.DataFrame:
 
 def save_activity(df: pd.DataFrame) -> None:
     df.to_csv(ACTIVITY_FILE, index=False)
+
+# ============================================================
+#  FLEXIBLE COST COLUMN DETECTION
+# ============================================================
+
+def detect_cost_column(df: pd.DataFrame):
+    """
+    Detects the cost column even if named differently.
+    Returns the column name or None if not found.
+    """
+    possible_names = [
+        "cost price", "cost", "unit cost", "buying price",
+        "costprice", "unitcost", "buyingprice", "purchase price",
+        "purchaseprice", "buy price", "buyprice"
+    ]
+
+    normalized = {col.lower().replace(" ", "").replace("-", ""): col for col in df.columns}
+
+    for name in possible_names:
+        key = name.replace(" ", "").replace("-", "")
+        if key in normalized:
+            return normalized[key]
+
+    return None
+
+def ensure_cost_column(df: pd.DataFrame) -> str:
+    """
+    Ensure there is a cost column in df.
+    Returns the column name to use.
+    """
+    cost_col = detect_cost_column(df)
+    if cost_col:
+        return cost_col
+    # Create a default one if none exists
+    if "Cost Price" not in df.columns:
+        df["Cost Price"] = 0.0
+    return "Cost Price"
 
 # ============================================================
 #  CATEGORY-BASED BARCODE GENERATOR
@@ -293,6 +331,8 @@ def manage_users_page():
 def add_item_page(df: pd.DataFrame):
     header("➕ Add New Stock Item")
 
+    cost_col = ensure_cost_column(df)
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -325,12 +365,20 @@ def add_item_page(df: pd.DataFrame):
             total_value = available * price
             status = compute_status(available, reorder)
 
-            df.loc[len(df)] = [
-                category, item, item_code, brand,
-                available, reorder, cost_price,
-                price, total_value, status
-            ]
+            new_row = {
+                "Category": category,
+                "Item": item,
+                "Item Code": item_code,
+                "Brand": brand,
+                "Available Stock": available,
+                "Reorder Level": reorder,
+                "Price": price,
+                "Total Value": total_value,
+                "Stock Status": status
+            }
+            new_row[cost_col] = cost_price
 
+            df = df.append(new_row, ignore_index=True)
             save_stock(df)
             log_activity(
                 st.session_state["username"],
@@ -339,10 +387,12 @@ def add_item_page(df: pd.DataFrame):
             )
             st.success(f"{item} added successfully!")
 
-# ---------- NEW: RECEIVE STOCK WITH LIVE SEARCH, CONFIRMATION, RECENT LIST ----------
+# ---------- RECEIVE STOCK WITH LIVE SEARCH, COST INPUT, CONFIRMATION, RECENT LIST ----------
 
 def receive_stock_page(df: pd.DataFrame):
     header("📥 Receive Stock")
+
+    cost_col = ensure_cost_column(df)
 
     st.markdown("**Search by Item Name or Code**")
     search_term = st.text_input("Type item name or code", key="receive_search")
@@ -373,6 +423,7 @@ def receive_stock_page(df: pd.DataFrame):
     match = df[df["Item Code"].astype(str) == str(code)]
     if not match.empty:
         item = match.iloc[0]
+        current_cost = item.get(cost_col, 0)
 
         st.success("Item Found")
         st.markdown(f"""
@@ -380,36 +431,57 @@ def receive_stock_page(df: pd.DataFrame):
             **Brand:** {item['Brand']}  
             **Available Stock:** {item['Available Stock']}  
             **Selling Price:** ${item['Price']:.2f}  
-            **Cost Price:** ${item['Cost Price']:.2f}  
+            **Current Cost Price:** ${current_cost:.2f}  
             **Status:** {item['Stock Status']}
         """)
 
         qty = st.number_input("Quantity Received", min_value=1, key="receive_qty")
+        new_cost = st.number_input(
+            "New Cost Price (leave 0 to keep current)",
+            min_value=0.0,
+            format="%.2f",
+            key="receive_new_cost"
+        )
 
         if st.button("Review Receive", key="receive_review_btn"):
+            display_cost = new_cost if new_cost > 0 else current_cost
             st.info(
-                f"Confirm receiving **{qty}** units of **{item['Item']} ({item['Item Code']})**?"
+                f"Confirm receiving **{qty}** units of **{item['Item']} ({item['Item Code']})** "
+                f"at cost **${display_cost:.2f}**?"
             )
             if st.button("Confirm Receive", key="receive_confirm_btn"):
                 idx = match.index[0]
-                df.at[idx, "Available Stock"] += qty
+
+                # Update quantity
+                df.at[idx, "Available Stock"] = df.at[idx, "Available Stock"] + qty
+
+                # Update cost price if changed
+                if new_cost > 0:
+                    df.at[idx, cost_col] = new_cost
+                    current_cost = new_cost
+
+                # Recalculate total value (based on selling price)
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+
+                # Recalculate stock status
                 df.at[idx, "Stock Status"] = compute_status(
                     df.at[idx, "Available Stock"],
                     df.at[idx, "Reorder Level"]
                 )
+
                 save_stock(df)
 
                 log_activity(
                     st.session_state["username"],
                     "receive_stock",
-                    f"Received {qty} of {item['Item']} ({item['Item Code']})"
+                    f"Received {qty} of {item['Item']} ({item['Item Code']}) at cost {current_cost}"
                 )
 
                 st.session_state["recent_received"].insert(0, {
                     "Item": item["Item"],
                     "Item Code": item["Item Code"],
                     "Qty": qty,
+                    "Cost Price": current_cost,
                     "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 })
                 st.session_state["recent_received"] = st.session_state["recent_received"][:5]
@@ -425,10 +497,12 @@ def receive_stock_page(df: pd.DataFrame):
     else:
         st.caption("No recent receive transactions yet.")
 
-# ---------- NEW: ISSUE STOCK WITH LIVE SEARCH, CONFIRMATION, RECENT LIST ----------
+# ---------- ISSUE STOCK WITH LIVE SEARCH, CONFIRMATION, RECENT LIST ----------
 
 def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     header("📤 Issue Stock")
+
+    cost_col = ensure_cost_column(df)
 
     st.markdown("**Search by Item Name or Code**")
     search_term = st.text_input("Type item name or code", key="issue_search")
@@ -459,6 +533,7 @@ def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     match = df[df["Item Code"].astype(str) == str(code)]
     if not match.empty:
         item = match.iloc[0]
+        current_cost = item.get(cost_col, 0)
 
         st.success("Item Found")
         st.markdown(f"""
@@ -466,7 +541,7 @@ def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
             **Brand:** {item['Brand']}  
             **Available Stock:** {item['Available Stock']}  
             **Selling Price:** ${item['Price']:.2f}  
-            **Cost Price:** ${item['Cost Price']:.2f}  
+            **Cost Price:** ${current_cost:.2f}  
             **Status:** {item['Stock Status']}
         """)
 
@@ -477,27 +552,35 @@ def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                 st.error("Not enough stock!")
             else:
                 st.info(
-                    f"Confirm issuing **{qty}** units of **{item['Item']} ({item['Item Code']})**?"
+                    f"Confirm issuing **{qty}** units of **{item['Item']} ({item['Item Code']})** "
+                    f"at selling price **${item['Price']:.2f}**?"
                 )
                 if st.button("Confirm Issue", key="issue_confirm_btn"):
                     idx = match.index[0]
-                    df.at[idx, "Available Stock"] -= qty
+
+                    # Deduct quantity
+                    df.at[idx, "Available Stock"] = df.at[idx, "Available Stock"] - qty
+
+                    # Recalculate total value
                     df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+
+                    # Recalculate stock status
                     df.at[idx, "Stock Status"] = compute_status(
                         df.at[idx, "Available Stock"],
                         df.at[idx, "Reorder Level"]
                     )
                     save_stock(df)
 
+                    cost_value = current_cost
                     sale = {
                         "Item": item["Item"],
                         "Item Code": item["Item Code"],
                         "Quantity Sold": qty,
                         "Selling Price": item["Price"],
-                        "Cost Price": item["Cost Price"],
+                        "Cost Price": cost_value,
                         "Total Sale": qty * item["Price"],
-                        "Total Cost": qty * item["Cost Price"],
-                        "Profit": qty * (item["Price"] - item["Cost Price"]),
+                        "Total Cost": qty * cost_value,
+                        "Profit": qty * (item["Price"] - cost_value),
                         "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
 
@@ -620,6 +703,8 @@ def activity_log_page():
 def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     header("📊 System Overview")
 
+    cost_col = ensure_cost_column(df)
+
     st.subheader("🔍 Quick Barcode Scan")
 
     scan_code = st.text_input("Scan Barcode / Enter Item Code", key="dash_scan_code")
@@ -631,6 +716,7 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
             st.error("No item found with that barcode.")
         else:
             item = match.iloc[0]
+            current_cost = item.get(cost_col, 0)
 
             st.success("Item Found")
 
@@ -639,6 +725,7 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                 **Brand:** {item['Brand']}  
                 **Available Stock:** {item['Available Stock']}  
                 **Price:** ${item['Price']:.2f}  
+                **Cost Price:** ${current_cost:.2f}  
                 **Status:** {item['Stock Status']}
             """)
 
@@ -650,9 +737,20 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                     min_value=1,
                     key="dash_receive_qty"
                 )
+                new_cost_dash = st.number_input(
+                    "New Cost Price (leave 0 to keep current)",
+                    min_value=0.0,
+                    format="%.2f",
+                    key="dash_new_cost"
+                )
                 if st.button("Receive Stock", key="dash_receive_btn"):
                     idx = match.index[0]
-                    df.at[idx, "Available Stock"] += qty_receive
+
+                    df.at[idx, "Available Stock"] = df.at[idx, "Available Stock"] + qty_receive
+                    if new_cost_dash > 0:
+                        df.at[idx, cost_col] = new_cost_dash
+                        current_cost = new_cost_dash
+
                     df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
                     df.at[idx, "Stock Status"] = compute_status(
                         df.at[idx, "Available Stock"],
@@ -677,7 +775,7 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                         st.error("Not enough stock to issue.")
                     else:
                         idx = match.index[0]
-                        df.at[idx, "Available Stock"] -= qty_issue
+                        df.at[idx, "Available Stock"] = df.at[idx, "Available Stock"] - qty_issue
                         df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
                         df.at[idx, "Stock Status"] = compute_status(
                             df.at[idx, "Available Stock"],
@@ -685,15 +783,16 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                         )
                         save_stock(df)
 
+                        cost_value = current_cost
                         sale = {
                             "Item": item["Item"],
                             "Item Code": item["Item Code"],
                             "Quantity Sold": qty_issue,
                             "Selling Price": item["Price"],
-                            "Cost Price": item["Cost Price"],
+                            "Cost Price": cost_value,
                             "Total Sale": qty_issue * item["Price"],
-                            "Total Cost": qty_issue * item["Cost Price"],
-                            "Profit": qty_issue * (item["Price"] - item["Cost Price"]),
+                            "Total Cost": qty_issue * cost_value,
+                            "Profit": qty_issue * (item["Price"] - cost_value),
                             "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
 
@@ -762,10 +861,10 @@ def search_page(df: pd.DataFrame):
     term = st.text_input("Search by item name, code, or brand", key="search_term")
 
     if term:
-        filtered = df[df.apply(
-            lambda row: term.lower() in row.astype(str).str.lower().to_string(),
-            axis=1
-        )]
+        term_lower = term.lower()
+        filtered = df[
+            df.apply(lambda row: term_lower in row.astype(str).str.lower().to_string(), axis=1)
+        ]
         if filtered.empty:
             st.info("No matching items found.")
         else:
