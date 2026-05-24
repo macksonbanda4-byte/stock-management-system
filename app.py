@@ -3,11 +3,11 @@ import pandas as pd
 from datetime import datetime
 
 # -----------------------------
-# Simple login config (demo only)
+# Simple login config
 # -----------------------------
 USERS = {
-    "admin": "admin123",   # username: password
-    "ackson": "password"   # you can change or remove this
+    "admin": "admin123",
+    "ackson": "password"
 }
 
 # -----------------------------
@@ -63,8 +63,7 @@ def login_form():
         if username in USERS and USERS[username] == password:
             st.session_state["logged_in"] = True
             st.session_state["username"] = username
-            st.success("Login successful! Reloading...")
-            st.experimental_rerun()
+            st.success("Login successful!")
         else:
             st.error("Invalid username or password.")
 
