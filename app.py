@@ -171,14 +171,14 @@ if choice == "Dashboard":
         col1, col2 = st.columns(2)
         col3, col4 = st.columns(2)
 
-        col1.markdown(card_container("Total Items", total_items))
-        col2.markdown(card_container("Total Stock Value (USD)", f"${total_value:,.2f}"))
-        col3.markdown(card_container("Low Stock Items", low_stock, "#FFB900"))
-        col4.markdown(card_container("Out of Stock", out_stock, "#D83B01"))
+        col1.markdown(card_container("Total Items", total_items), unsafe_allow_html=True)
+        col2.markdown(card_container("Total Stock Value (USD)", f"${total_value:,.2f}"), unsafe_allow_html=True)
+        col3.markdown(card_container("Low Stock Items", low_stock, "#FFB900"), unsafe_allow_html=True)
+        col4.markdown(card_container("Out of Stock", out_stock, "#D83B01"), unsafe_allow_html=True)
 
         if not sales_df.empty:
             total_profit = sales_df["Profit"].sum()
-            st.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"))
+            st.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
 
 # -----------------------------
 # Search Items
@@ -372,9 +372,9 @@ elif choice == "Sales Tracking":
         total_profit = sales_df["Profit"].sum()
 
         col1, col2, col3 = st.columns(3)
-        col1.markdown(card_container("Total Revenue (USD)", f"${total_revenue:,.2f}", "#0078D4"))
-        col2.markdown(card_container("Total Cost (USD)", f"${total_cost:,.2f}", "#FFB900"))
-        col3.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"))
+        col1.markdown(card_container("Total Revenue (USD)", f"${total_revenue:,.2f}", "#0078D4"), unsafe_allow_html=True)
+        col2.markdown(card_container("Total Cost (USD)", f"${total_cost:,.2f}", "#FFB900"), unsafe_allow_html=True)
+        col3.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
 
 # -----------------------------
 # Current Stock
