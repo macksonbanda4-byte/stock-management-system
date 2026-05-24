@@ -14,7 +14,55 @@ df = load_data()
 st.set_page_config(page_title="Automated Stock Management System", layout="wide")
 st.title("Automated Stock Management System")
 
-menu = ["Dashboard", "Search Items", "Receive Stock", "Issue Stock", "Current Stock"]
+menu = ["Dashboard", "Search Items", "Add New Item", "Receive Stock", "Issue Stock", "Current Stock"]
+# ---------------------- ADD NEW ITEM ----------------------
+elif choice == "Add New Item":
+    st.subheader("➕ Add New Stock Item")
+
+    category = st.text_input("Category")
+    item = st.text_input("Item Name")
+    item_code = st.text_input("Item Code")
+    brand = st.text_input("Brand")
+    available_stock = st.number_input("Available Stock", min_value=0)
+    reorder_level = st.number_input("Reorder Level", min_value=0)
+    price = st.number_input("Price (ZMW)", min_value=0.0, format="%.2f")
+
+    if st.button("Add Item"):
+        if not category or not item or not item_code or not brand:
+            st.error("Please fill in all text fields.")
+        else:
+            # Calculate Total Value
+            total_value = available_stock * price
+
+            # Determine Stock Status
+            if available_stock == 0:
+                status = "Out of Stock"
+            elif available_stock <= reorder_level:
+                status = "Low Stock"
+            else:
+                status = "In Stock"
+
+            # Create new row
+            new_row = {
+                "Category": category,
+                "Item": item,
+                "Item Code": item_code,
+                "Brand": brand,
+                "Available Stock": available_stock,
+                "Reorder Level": reorder_level,
+                "Price": price,
+                "Total Value": total_value,
+                "Stock Status": status
+            }
+
+            # Append to DataFrame
+            df.loc[len(df)] = new_row
+
+            # Save to CSV
+            save_data(df)
+
+            st.success(f"New item '{item}' added successfully!")
+
 choice = st.sidebar.selectbox("Menu", menu)
 
 # ---------------------- DASHBOARD ----------------------
