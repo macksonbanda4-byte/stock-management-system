@@ -48,7 +48,7 @@ def load_stock() -> pd.DataFrame:
     for c in df.columns:
         if c in ["Category", "Item", "Item Code", "Brand", "Stock Status"]:
             continue
-        df[c] = pd.to_numeric(df[c], errors="ignore")
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     if "Stock Status" not in df.columns:
         df["Stock Status"] = df.apply(
             lambda r: compute_status(r.get("Available Stock", 0), r.get("Reorder Level", 0)),
@@ -113,7 +113,6 @@ def ensure_cost_column(df: pd.DataFrame) -> str:
     cost_col = detect_cost_column(df)
     if cost_col:
         return cost_col
-    # Create a default one if none exists
     if "Cost Price" not in df.columns:
         df["Cost Price"] = 0.0
     return "Cost Price"
@@ -452,18 +451,14 @@ def receive_stock_page(df: pd.DataFrame):
             if st.button("Confirm Receive", key="receive_confirm_btn"):
                 idx = match.index[0]
 
-                # Update quantity
                 df.at[idx, "Available Stock"] = df.at[idx, "Available Stock"] + qty
 
-                # Update cost price if changed
                 if new_cost > 0:
                     df.at[idx, cost_col] = new_cost
                     current_cost = new_cost
 
-                # Recalculate total value (based on selling price)
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
 
-                # Recalculate stock status
                 df.at[idx, "Stock Status"] = compute_status(
                     df.at[idx, "Available Stock"],
                     df.at[idx, "Reorder Level"]
@@ -558,13 +553,10 @@ def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                 if st.button("Confirm Issue", key="issue_confirm_btn"):
                     idx = match.index[0]
 
-                    # Deduct quantity
                     df.at[idx, "Available Stock"] = df.at[idx, "Available Stock"] - qty
 
-                    # Recalculate total value
                     df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
 
-                    # Recalculate stock status
                     df.at[idx, "Stock Status"] = compute_status(
                         df.at[idx, "Available Stock"],
                         df.at[idx, "Reorder Level"]
