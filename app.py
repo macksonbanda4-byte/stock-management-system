@@ -9,30 +9,14 @@ def save_data(df):
     df.to_csv("stock_clean.csv", index=False)
 
 df = load_data()
-# Ensure correct column names (CSV must have ONLY these 7 columns)
-df.columns = ["Category", "Item", "Item Code", "Brand", "Available Stock", "Reorder Level", "Price"]
-
-# Calculate Total Value
-df["Total Value"] = df["Available Stock"] * df["Price"]
-
-# Determine Stock Status
-def get_status(stock, reorder):
-    if stock == 0:
-        return "Out of Stock"
-    elif stock <= reorder:
-        return "Low Stock"
-    else:
-        return "In Stock"
-
-df["Stock Status"] = df.apply(lambda row: get_status(row["Available Stock"], row["Reorder Level"]), axis=1)
 
 # ---------------------- UI SETUP ----------------------
 st.set_page_config(page_title="Automated Stock Management System", layout="wide")
-
 st.title("Automated Stock Management System")
 
 menu = ["Dashboard", "Search Items", "Receive Stock", "Issue Stock", "Current Stock"]
 choice = st.sidebar.selectbox("Menu", menu)
+
 # ---------------------- DASHBOARD ----------------------
 if choice == "Dashboard":
     st.subheader("📊 System Overview")
@@ -51,7 +35,6 @@ if choice == "Dashboard":
 
     st.write("### 📦 Full Inventory Overview")
     st.dataframe(df)
-
 
 # ---------------------- SEARCH ITEMS ----------------------
 elif choice == "Search Items":
@@ -88,6 +71,25 @@ elif choice == "Receive Stock":
 
     if st.button("Submit Stock"):
         df.loc[df["Item"] == item, "Available Stock"] += qty
+
+        # Recalculate Total Value
+        df.loc[df["Item"] == item, "Total Value"] = (
+            df.loc[df["Item"] == item, "Available Stock"] * df.loc[df["Item"] == item, "Price"]
+        )
+
+        # Recalculate Stock Status
+        stock = df.loc[df["Item"] == item, "Available Stock"].values[0]
+        reorder = df.loc[df["Item"] == item, "Reorder Level"].values[0]
+
+        if stock == 0:
+            status = "Out of Stock"
+        elif stock <= reorder:
+            status = "Low Stock"
+        else:
+            status = "In Stock"
+
+        df.loc[df["Item"] == item, "Stock Status"] = status
+
         save_data(df)
         st.success(f"Successfully received {qty} units of {item}.")
 
@@ -111,6 +113,25 @@ elif choice == "Issue Stock":
 
         if st.button("Issue Stock"):
             df.loc[df["Item"] == item, "Available Stock"] -= qty
+
+            # Recalculate Total Value
+            df.loc[df["Item"] == item, "Total Value"] = (
+                df.loc[df["Item"] == item, "Available Stock"] * df.loc[df["Item"] == item, "Price"]
+            )
+
+            # Recalculate Stock Status
+            stock = df.loc[df["Item"] == item, "Available Stock"].values[0]
+            reorder = df.loc[df["Item"] == item, "Reorder Level"].values[0]
+
+            if stock == 0:
+                status = "Out of Stock"
+            elif stock <= reorder:
+                status = "Low Stock"
+            else:
+                status = "In Stock"
+
+            df.loc[df["Item"] == item, "Stock Status"] = status
+
             save_data(df)
             st.success(f"Issued {qty} units of {item}.")
 
