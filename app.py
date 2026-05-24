@@ -86,30 +86,19 @@ def save_activity(df: pd.DataFrame) -> None:
 # ============================================================
 
 def detect_cost_column(df: pd.DataFrame):
-    """
-    Detects the cost column even if named differently.
-    Returns the column name or None if not found.
-    """
     possible_names = [
         "cost price", "cost", "unit cost", "buying price",
         "costprice", "unitcost", "buyingprice", "purchase price",
         "purchaseprice", "buy price", "buyprice"
     ]
-
     normalized = {col.lower().replace(" ", "").replace("-", ""): col for col in df.columns}
-
     for name in possible_names:
         key = name.replace(" ", "").replace("-", "")
         if key in normalized:
             return normalized[key]
-
     return None
 
 def ensure_cost_column(df: pd.DataFrame) -> str:
-    """
-    Ensure there is a cost column in df.
-    Returns the column name to use.
-    """
     cost_col = detect_cost_column(df)
     if cost_col:
         return cost_col
@@ -122,10 +111,8 @@ def ensure_cost_column(df: pd.DataFrame) -> str:
 # ============================================================
 
 def generate_category_barcode(category, df):
-    """Generate a category-based auto-incrementing barcode."""
     if not category:
         return ""
-
     prefix = category[:3].upper()
     existing = df[df["Category"].astype(str).str.lower() == str(category).lower()]
     next_num = len(existing) + 1
@@ -386,7 +373,7 @@ def add_item_page(df: pd.DataFrame):
             )
             st.success(f"{item} added successfully!")
 
-# ---------- RECEIVE STOCK WITH LIVE SEARCH, COST INPUT, CONFIRMATION, RECENT LIST ----------
+# ---------- RECEIVE STOCK ----------
 
 def receive_stock_page(df: pd.DataFrame):
     header("📥 Receive Stock")
@@ -492,7 +479,7 @@ def receive_stock_page(df: pd.DataFrame):
     else:
         st.caption("No recent receive transactions yet.")
 
-# ---------- ISSUE STOCK WITH LIVE SEARCH, CONFIRMATION, RECENT LIST ----------
+# ---------- ISSUE STOCK ----------
 
 def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     header("📤 Issue Stock")
@@ -820,20 +807,66 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
         total_profit = sales_df["Profit"].sum()
         st.markdown(card("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
 
-    st.subheader("⚠️ Low Stock Alerts")
-    alerts = df[df["Stock Status"].isin(["Low Stock", "Out of Stock"])]
-    if alerts.empty:
-        st.success("All items are sufficiently stocked.")
+    # ============================================================
+    #  IMPROVED DASHBOARD ALERTS
+    # ============================================================
+
+    st.subheader("⚠️ Stock Alerts")
+
+    low_df = df[df["Stock Status"] == "Low Stock"]
+    out_df = df[df["Stock Status"] == "Out of Stock"]
+
+    if low_df.empty and out_df.empty:
+        st.markdown("""
+            <div style="
+                background:#E8F8E8;
+                padding:15px;
+                border-left:6px solid #2ECC71;
+                border-radius:8px;
+                font-size:16px;
+                color:#145A32;">
+                ✅ <strong>All items are sufficiently stocked.</strong><br>
+                No low‑stock or out‑of‑stock alerts at the moment.
+            </div>
+        """, unsafe_allow_html=True)
     else:
-        for _, row in alerts.iterrows():
-            msg = (
-                f"{row['Item']} ({row['Item Code']}) - {row['Stock Status']} "
-                f"(Available: {row['Available Stock']}, Reorder: {row['Reorder Level']})"
-            )
-            if row["Stock Status"] == "Out of Stock":
-                st.error(msg)
-            else:
-                st.warning(msg)
+        if not out_df.empty:
+            st.markdown("""
+                <h4 style="color:#C0392B;">🔴 Out of Stock</h4>
+            """, unsafe_allow_html=True)
+
+            for _, row in out_df.iterrows():
+                st.markdown(f"""
+                    <div style="
+                        background:#FDEDEC;
+                        padding:12px;
+                        border-left:6px solid #C0392B;
+                        border-radius:8px;
+                        margin-bottom:8px;">
+                        <strong>{row['Item']} ({row['Item Code']})</strong><br>
+                        <span style="color:#922B21;">Available: {row['Available Stock']}</span><br>
+                        Reorder Level: {row['Reorder Level']}
+                    </div>
+                """, unsafe_allow_html=True)
+
+        if not low_df.empty:
+            st.markdown("""
+                <h4 style="color:#D68910;">🟠 Low Stock</h4>
+            """, unsafe_allow_html=True)
+
+            for _, row in low_df.iterrows():
+                st.markdown(f"""
+                    <div style="
+                        background:#FEF5E7;
+                        padding:12px;
+                        border-left:6px solid #D68910;
+                        border-radius:8px;
+                        margin-bottom:8px;">
+                        <strong>{row['Item']} ({row['Item Code']})</strong><br>
+                        <span style="color:#B9770E;">Available: {row['Available Stock']}</span><br>
+                        Reorder Level: {row['Reorder Level']}
+                    </div>
+                """, unsafe_allow_html=True)
 
     st.subheader("Stock by Item")
     chart_data = df[["Item", "Available Stock"]].set_index("Item")
