@@ -96,11 +96,19 @@ def login_page():
 
     if st.button("Login"):
         users = load_users()
-        match = users[(users["username"] == username) & (users["password"] == password)]
+
+        # CASE-INSENSITIVE LOGIN
+        users["username_lower"] = users["username"].str.lower()
+        users["password_lower"] = users["password"].astype(str).str.lower()
+
+        match = users[
+            (users["username_lower"] == username.lower()) &
+            (users["password_lower"] == password.lower())
+        ]
 
         if not match.empty:
             st.session_state["logged_in"] = True
-            st.session_state["username"] = username
+            st.session_state["username"] = match.iloc[0]["username"]
             st.session_state["role"] = match.iloc[0]["role"]
             st.success("Login successful!")
         else:
@@ -121,7 +129,7 @@ def manage_users_page():
     new_role = st.selectbox("Role", ["admin", "staff", "viewer"])
 
     if st.button("Add User"):
-        if new_user in users["username"].values:
+        if new_user.lower() in users["username"].str.lower().values:
             st.error("Username already exists.")
         else:
             users.loc[len(users)] = [new_user, new_pass, new_role]
