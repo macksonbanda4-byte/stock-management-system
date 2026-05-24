@@ -94,7 +94,6 @@ elif choice == "Receive Stock":
             df.loc[df["Item"] == selected_item, "Price"]
         )
 
-        # Update status
         new_stock = df.loc[df["Item"] == selected_item, "Available Stock"].values[0]
         reorder = df.loc[df["Item"] == selected_item, "Reorder Level"].values[0]
 
@@ -133,7 +132,6 @@ elif choice == "Issue Stock":
                 df.loc[df["Item"] == selected_item, "Price"]
             )
 
-            # Update status
             new_stock = df.loc[df["Item"] == selected_item, "Available Stock"].values[0]
             reorder = df.loc[df["Item"] == selected_item, "Reorder Level"].values[0]
 
