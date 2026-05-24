@@ -81,6 +81,27 @@ def save_activity(df: pd.DataFrame) -> None:
     df.to_csv(ACTIVITY_FILE, index=False)
 
 # ============================================================
+#  CATEGORY-BASED BARCODE GENERATOR
+# ============================================================
+
+def generate_category_barcode(category, df):
+    """Generate a category-based auto-incrementing barcode."""
+    if not category:
+        return ""
+
+    # Prefix = first 3 letters of category
+    prefix = category[:3].upper()
+
+    # Filter existing items in same category
+    existing = df[df["Category"].astype(str).str.lower() == str(category).lower()]
+
+    # Next number
+    next_num = len(existing) + 1
+
+    # Format: PREFIX-00001
+    return f"{prefix}-{next_num:05d}"
+
+# ============================================================
 #  ACTIVITY LOGGING
 # ============================================================
 
@@ -285,8 +306,18 @@ def add_item_page(df: pd.DataFrame):
     with col1:
         category = st.text_input("Category", key="add_cat")
         item = st.text_input("Item Name", key="add_item")
-        item_code = st.text_input("Item Code / Barcode", key="add_code")
         brand = st.text_input("Brand", key="add_brand")
+
+        # Auto-generate category-based barcode
+        auto_code = ""
+        if category:
+            auto_code = generate_category_barcode(category, df)
+
+        item_code = st.text_input(
+            "Item Code / Barcode (Auto‑Generated)",
+            value=auto_code,
+            key="add_code"
+        )
 
     with col2:
         available = st.number_input("Available Stock", min_value=0, key="add_available")
