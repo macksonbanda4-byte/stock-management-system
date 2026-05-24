@@ -138,7 +138,11 @@ def manage_users_page():
         row = users[users["username"] == selected].iloc[0]
 
         edit_pass = st.text_input("Password", value=row["password"], type="password")
-        edit_role = st.selectbox("Role", ["admin", "staff", "viewer"], index=["admin","staff","viewer"].index(row["role"]))
+        edit_role = st.selectbox(
+            "Role",
+            ["admin", "staff", "viewer"],
+            index=["admin", "staff", "viewer"].index(row["role"])
+        )
 
         if st.button("Save Changes"):
             users.loc[users["username"] == selected, "password"] = edit_pass
@@ -147,7 +151,7 @@ def manage_users_page():
             st.success("User updated successfully!")
 
         if st.button("Delete User"):
-            if selected == st.session_state["username"]:
+            if selected == st.session_state.get("username"):
                 st.warning("Are you sure you want to delete your own account? This action cannot be undone.")
                 if st.button("Confirm Delete"):
                     users = users[users["username"] != selected]
@@ -177,21 +181,22 @@ if not st.session_state["logged_in"]:
 df = load_stock()
 sales_df = load_sales()
 
-# Sidebar
-st.sidebar.markdown(
-    f"""
-    <div style="padding:10px;background:#F3F9FF;border-radius:8px;border-left:4px solid #0078D4;">
-        <strong>👤 Logged in as:</strong><br>{st.session_state['username']} ({st.session_state['role']})
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# Sidebar user info (SAFE)
+if "username" in st.session_state and "role" in st.session_state:
+    st.sidebar.markdown(
+        f"""
+        <div style="padding:10px;background:#F3F9FF;border-radius:8px;border-left:4px solid #0078D4;">
+            <strong>👤 Logged in as:</strong><br>{st.session_state['username']} ({st.session_state['role']})
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if st.sidebar.button("Logout"):
     st.session_state.clear()
     st.experimental_rerun()
 
-role = st.session_state["role"]
+role = st.session_state.get("role", "viewer")
 
 # ============================================================
 #  ROLE-BASED MENU
@@ -255,7 +260,10 @@ elif choice == "Search Items":
     term = st.text_input("Search by item name, code, or brand")
 
     if term:
-        filtered = df[df.apply(lambda row: term.lower() in row.astype(str).str.lower().to_string(), axis=1)]
+        filtered = df[df.apply(
+            lambda row: term.lower() in row.astype(str).str.lower().to_string(),
+            axis=1
+        )]
         st.dataframe(filtered)
 
 # ============================================================
@@ -315,7 +323,10 @@ elif choice == "Receive Stock":
             idx = matches.index[0]
             df.at[idx, "Available Stock"] += qty
             df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
-            df.at[idx, "Stock Status"] = compute_status(df.at[idx, "Available Stock"], df.at[idx, "Reorder Level"])
+            df.at[idx, "Stock Status"] = compute_status(
+                df.at[idx, "Available Stock"],
+                df.at[idx, "Reorder Level"]
+            )
             save_stock(df)
             st.success("Stock updated!")
 
@@ -341,7 +352,10 @@ elif choice == "Issue Stock":
                 idx = matches.index[0]
                 df.at[idx, "Available Stock"] -= qty
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
-                df.at[idx, "Stock Status"] = compute_status(df.at[idx, "Available Stock"], df.at[idx, "Reorder Level"])
+                df.at[idx, "Stock Status"] = compute_status(
+                    df.at[idx, "Available Stock"],
+                    df.at[idx, "Reorder Level"]
+                )
                 save_stock(df)
 
                 sale = {
