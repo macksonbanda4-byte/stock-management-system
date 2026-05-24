@@ -9,6 +9,22 @@ def save_data(df):
     df.to_csv("stock_clean.csv", index=False)
 
 df = load_data()
+# Ensure correct column names (CSV must have ONLY these 7 columns)
+df.columns = ["Category", "Item", "Item Code", "Brand", "Available Stock", "Reorder Level", "Price"]
+
+# Calculate Total Value
+df["Total Value"] = df["Available Stock"] * df["Price"]
+
+# Determine Stock Status
+def get_status(stock, reorder):
+    if stock == 0:
+        return "Out of Stock"
+    elif stock <= reorder:
+        return "Low Stock"
+    else:
+        return "In Stock"
+
+df["Stock Status"] = df.apply(lambda row: get_status(row["Available Stock"], row["Reorder Level"]), axis=1)
 
 # ---------------------- UI SETUP ----------------------
 st.set_page_config(page_title="Automated Stock Management System", layout="wide")
@@ -17,22 +33,25 @@ st.title("Automated Stock Management System")
 
 menu = ["Dashboard", "Search Items", "Receive Stock", "Issue Stock", "Current Stock"]
 choice = st.sidebar.selectbox("Menu", menu)
-
 # ---------------------- DASHBOARD ----------------------
 if choice == "Dashboard":
     st.subheader("📊 System Overview")
 
     total_items = len(df)
-    total_stock = df["Available Stock"].sum()
-    low_stock = df[df["Available Stock"] <= df["Reorder Level"]]
+    total_stock_units = df["Available Stock"].sum()
+    total_inventory_value = df["Total Value"].sum()
+    low_stock_count = (df["Stock Status"] == "Low Stock").sum()
+    out_of_stock_count = (df["Stock Status"] == "Out of Stock").sum()
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Items", total_items)
-    col2.metric("Total Stock Units", total_stock)
-    col3.metric("Low Stock Alerts", len(low_stock))
+    col2.metric("Total Stock Units", total_stock_units)
+    col3.metric("Low Stock Items", low_stock_count)
+    col4.metric("Out of Stock", out_of_stock_count)
 
-    st.write("### Low Stock Items")
-    st.dataframe(low_stock)
+    st.write("### 📦 Full Inventory Overview")
+    st.dataframe(df)
+
 
 # ---------------------- SEARCH ITEMS ----------------------
 elif choice == "Search Items":
