@@ -1,4 +1,4 @@
-﻿CATEGORY,Item,ITEM CODE,BRAND,AVAILABLE STOCK,REORDER LEVEL,Unit Price,Total Value,STOCK STATUS
+﻿Category,Item,Item Code,Brand,Available Stock,Reorder Level,Price,Total Value,Stock Status
 Solar PV Modules ,Solar PV Modules 555W ,SOLAR-PV-555W-JASOLAR,JA SOLAR,16,10,70,1120,Okay
 Solar PV modules ,Solar PV modules 540W,SOLAR-PV-540W-ASTRONERGY,Astronergy,6,10,108,648,Okay
 Solar PV Modules ,Solar PV Modules 455W,PV-TRINA-MONO-455W,Trina,18,10,62,1116,Okay

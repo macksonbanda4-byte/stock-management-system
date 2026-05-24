@@ -1,96 +1,101 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Stock Management", layout="wide")
-
 # Load CSV
-@st.cache_data
 def load_data():
-    df = pd.read_csv("stock_clean.csv")
-    return df
+    return pd.read_csv("stock_clean.csv")
+
+def save_data(df):
+    df.to_csv("stock_clean.csv", index=False)
 
 df = load_data()
 
-st.title("📦 Automated Stock Management System")
+# ---------------------- UI SETUP ----------------------
+st.set_page_config(page_title="Automated Stock Management System", layout="wide")
 
-st.subheader("Current Stock List")
-st.dataframe(df, use_container_width=True)
+st.title("Automated Stock Management System")
 
-# --- RECEIVE STOCK ---
-st.subheader("➕ Receive Stock")
+menu = ["Dashboard", "Search Items", "Receive Stock", "Issue Stock", "Current Stock"]
+choice = st.sidebar.selectbox("Menu", menu)
 
-with st.form("receive_form"):
-    item_receive = st.selectbox("Select Item", df["Item"])
-    qty_receive = st.number_input("Quantity Received", min_value=1, step=1)
-    submit_receive = st.form_submit_button("Add Stock")
+# ---------------------- DASHBOARD ----------------------
+if choice == "Dashboard":
+    st.subheader("📊 System Overview")
 
-if submit_receive:
-    df.loc[df["Item"] == item_receive, "AVAILABLE STOCK"] += qty_receive
-    df.loc[df["Item"] == item_receive, "Total Value"] = (
-        df["AVAILABLE STOCK"] * df["Unit Price"]
-    )
-    df.loc[df["Item"] == item_receive, "STOCK STATUS"] = df["AVAILABLE STOCK"].apply(
-        lambda x: "Stock Out" if x == 0 else ("Reorder" if x <= 10 else "Okay")
-    )
-    df.to_csv("stock_clean.csv", index=False)
-    st.success(f"Stock updated for {item_receive}!")
+    total_items = len(df)
+    total_stock = df["Available Stock"].sum()
+    low_stock = df[df["Available Stock"] <= df["Reorder Level"]]
 
-# --- ISSUE STOCK ---
-st.subheader("➖ Issue Stock")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Items", total_items)
+    col2.metric("Total Stock Units", total_stock)
+    col3.metric("Low Stock Alerts", len(low_stock))
 
-with st.form("issue_form"):
-    item_issue = st.selectbox("Select Item to Issue", df["Item"])
-    qty_issue = st.number_input("Quantity Issued", min_value=1, step=1)
-    submit_issue = st.form_submit_button("Issue Stock")
+    st.write("### Low Stock Items")
+    st.dataframe(low_stock)
 
-if submit_issue:
-    current_stock = df.loc[df["Item"] == item_issue, "AVAILABLE STOCK"].values[0]
-    if qty_issue > current_stock:
-        st.error("Not enough stock available!")
+# ---------------------- SEARCH ITEMS ----------------------
+elif choice == "Search Items":
+    st.subheader("🔍 Search Inventory")
+
+    query = st.text_input("Search by Item, Category, or Brand")
+
+    if query:
+        results = df[
+            df["Item"].str.contains(query, case=False, na=False) |
+            df["Category"].str.contains(query, case=False, na=False) |
+            df["Brand"].str.contains(query, case=False, na=False)
+        ]
+        st.write(f"### Results for: **{query}**")
+        st.dataframe(results)
     else:
-        df.loc[df["Item"] == item_issue, "AVAILABLE STOCK"] -= qty_issue
-        df.loc[df["Item"] == item_issue, "Total Value"] = (
-            df["AVAILABLE STOCK"] * df["Unit Price"]
-        )
-        df.loc[df["Item"] == item_issue, "STOCK STATUS"] = df["AVAILABLE STOCK"].apply(
-            lambda x: "Stock Out" if x == 0 else ("Reorder" if x <= 10 else "Okay")
-        )
-        df.to_csv("stock_clean.csv", index=False)
-        st.success(f"Issued {qty_issue} units of {item_issue}!")
+        st.info("Type something to search…")
 
-st.subheader("📊 Summary")
-total_items = len(df)
-total_stock_value = df["Total Value"].sum()
+# ---------------------- RECEIVE STOCK ----------------------
+elif choice == "Receive Stock":
+    st.subheader("📥 Receive Stock")
 
-st.metric("Total Items", total_items)
-st.metric("Total Stock Value", f"${total_stock_value:,.2f}")
-# --- EDIT ITEM DETAILS ---
-st.subheader("✏️ Edit Item Details")
+    item = st.selectbox("Select Item", df["Item"].unique())
+    selected = df[df["Item"] == item].iloc[0]
 
-with st.form("edit_item_form"):
-    item_to_edit = st.selectbox("Select Item to Edit", df["Item"])
-    
-    new_item_code = st.text_input("New Item Code", 
-                                  df.loc[df["Item"] == item_to_edit, "ITEM CODE"].values[0])
-    new_item_name = st.text_input("New Item Name", item_to_edit)
-    new_brand = st.text_input("New Brand", 
-                              df.loc[df["Item"] == item_to_edit, "BRAND"].values[0])
-    new_category = st.text_input("New Category", 
-                                 df.loc[df["Item"] == item_to_edit, "CATEGORY"].values[0])
-    new_price = st.number_input("New Unit Price", 
-                                value=float(df.loc[df["Item"] == item_to_edit, "Unit Price"].values[0]))
-    
-    submit_edit = st.form_submit_button("Save Changes")
+    st.write(f"**Category:** {selected['Category']}")
+    st.write(f"**Brand:** {selected['Brand']}")
+    st.write(f"**Price:** ZMW {selected['Price']}")
 
-if submit_edit:
-    df.loc[df["Item"] == item_to_edit, "ITEM CODE"] = new_item_code
-    df.loc[df["Item"] == item_to_edit, "Item"] = new_item_name
-    df.loc[df["Item"] == item_to_edit, "BRAND"] = new_brand
-    df.loc[df["Item"] == item_to_edit, "CATEGORY"] = new_category
-    df.loc[df["Item"] == item_to_edit, "Unit Price"] = new_price
-    
-    # Recalculate Total Value
-    df["Total Value"] = df["AVAILABLE STOCK"] * df["Unit Price"]
-    
-    df.to_csv("stock_clean.csv", index=False)
-    st.success("Item details updated successfully!")
+    qty = st.number_input("Enter Quantity Received", min_value=1)
+
+    total_cost = qty * selected["Price"]
+    st.write(f"**Total Cost:** ZMW {total_cost}")
+
+    if st.button("Submit Stock"):
+        df.loc[df["Item"] == item, "Available Stock"] += qty
+        save_data(df)
+        st.success(f"Successfully received {qty} units of {item}.")
+
+# ---------------------- ISSUE STOCK ----------------------
+elif choice == "Issue Stock":
+    st.subheader("📤 Issue Stock")
+
+    item = st.selectbox("Select Item", df["Item"].unique())
+    selected = df[df["Item"] == item].iloc[0]
+
+    st.write(f"**Available Stock:** {selected['Available Stock']}")
+    st.write(f"**Price:** ZMW {selected['Price']}")
+
+    qty = st.number_input("Enter Quantity to Issue", min_value=1)
+
+    if qty > selected["Available Stock"]:
+        st.error("Not enough stock available.")
+    else:
+        total_value = qty * selected["Price"]
+        st.write(f"**Total Value Issued:** ZMW {total_value}")
+
+        if st.button("Issue Stock"):
+            df.loc[df["Item"] == item, "Available Stock"] -= qty
+            save_data(df)
+            st.success(f"Issued {qty} units of {item}.")
+
+# ---------------------- CURRENT STOCK ----------------------
+elif choice == "Current Stock":
+    st.subheader("📦 Current Stock List")
+    st.dataframe(df)
