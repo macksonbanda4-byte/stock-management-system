@@ -151,3 +151,4 @@ elif choice == "Issue Stock":
 elif choice == "Current Stock":
     st.subheader("📦 Current Stock List")
     st.dataframe(df)
+
