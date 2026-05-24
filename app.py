@@ -67,6 +67,13 @@ if choice == "Dashboard":
         col3.metric("Low Stock Items", low_stock)
         col4.metric("Out of Stock", out_stock)
 
+        # Alerts
+        if out_stock > 0:
+            st.error(f"⚠ {out_stock} items are OUT OF STOCK!")
+
+        if low_stock > 0:
+            st.warning(f"⚠ {low_stock} items are LOW on stock!")
+
 # -----------------------------
 # Search Items
 # -----------------------------
@@ -209,4 +216,17 @@ elif choice == "Issue Stock (by Code)":
 # -----------------------------
 elif choice == "Current Stock":
     st.header("📦 Current Stock List")
-    st.dataframe(df)
+
+    if df.empty:
+        st.warning("No stock data available.")
+    else:
+        styled = df.style.apply(
+            lambda row: [
+                "background-color: #ffcccc" if row["Stock Status"] == "Out of Stock"
+                else "background-color: #fff3cd" if row["Stock Status"] == "Low Stock"
+                else ""
+                for _ in row
+            ],
+            axis=1
+        )
+        st.dataframe(styled, use_container_width=True)
