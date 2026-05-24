@@ -53,8 +53,42 @@ def compute_status(available, reorder):
     else:
         return "In Stock"
 
+def card_container(title, value, color="#0078D4"):
+    return f"""
+    <div style="
+        background-color: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        border-left: 6px solid {color};
+        margin-bottom: 15px;
+    ">
+        <h4 style="margin: 0; color: #444;">{title}</h4>
+        <h2 style="margin: 5px 0 0 0; color: #222;">{value}</h2>
+    </div>
+    """
+
+def section_header(text):
+    st.markdown(
+        f"""
+        <h2 style="
+            color: #0078D4;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #E5E5E5;
+            margin-top: 20px;
+        ">{text}</h2>
+        """,
+        unsafe_allow_html=True
+    )
+
 def login_form():
-    st.title("🔐 Login - Automated Stock Management System")
+    st.markdown(
+        """
+        <h1 style="color:#0078D4; text-align:center;">🔐 Login</h1>
+        """,
+        unsafe_allow_html=True
+    )
+
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     login_btn = st.button("Login")
@@ -86,10 +120,23 @@ if not st.session_state["logged_in"]:
 # -----------------------------
 # Main app (only after login)
 # -----------------------------
-st.title("📦 Automated Stock Management System")
+st.markdown(
+    """
+    <h1 style="color:#0078D4; font-weight:700;">📦 Automated Stock Management System</h1>
+    """,
+    unsafe_allow_html=True
+)
 
 # Sidebar with user info + logout
-st.sidebar.write(f"👤 Logged in as: **{st.session_state['username']}**")
+st.sidebar.markdown(
+    f"""
+    <div style="padding:10px; background:#F3F9FF; border-radius:8px; border-left:4px solid #0078D4;">
+        <strong>👤 Logged in as:</strong><br>{st.session_state['username']}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 if st.sidebar.button("Logout"):
     st.session_state["logged_in"] = False
     st.session_state["username"] = None
@@ -111,7 +158,7 @@ choice = st.sidebar.selectbox("Menu", menu)
 # Dashboard
 # -----------------------------
 if choice == "Dashboard":
-    st.header("📊 System Overview")
+    section_header("📊 System Overview")
 
     if df.empty:
         st.warning("No stock data available.")
@@ -121,27 +168,23 @@ if choice == "Dashboard":
         low_stock = len(df[df["Stock Status"] == "Low Stock"])
         out_stock = len(df[df["Stock Status"] == "Out of Stock"])
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Items", total_items)
-        col2.metric("Total Stock Value (ZMW)", f"{total_value:,.2f}")
-        col3.metric("Low Stock Items", low_stock)
-        col4.metric("Out of Stock", out_stock)
+        col1, col2 = st.columns(2)
+        col3, col4 = st.columns(2)
 
-        if out_stock > 0:
-            st.error(f"⚠ {out_stock} items are OUT OF STOCK!")
-
-        if low_stock > 0:
-            st.warning(f"⚠ {low_stock} items are LOW on stock!")
+        col1.markdown(card_container("Total Items", total_items))
+        col2.markdown(card_container("Total Stock Value (USD)", f"${total_value:,.2f}"))
+        col3.markdown(card_container("Low Stock Items", low_stock, "#FFB900"))
+        col4.markdown(card_container("Out of Stock", out_stock, "#D83B01"))
 
         if not sales_df.empty:
             total_profit = sales_df["Profit"].sum()
-            st.metric("Total Profit (ZMW)", f"{total_profit:,.2f}")
+            st.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"))
 
 # -----------------------------
 # Search Items
 # -----------------------------
 elif choice == "Search Items":
-    st.header("🔍 Search Inventory")
+    section_header("🔍 Search Inventory")
     term = st.text_input("Search by item name, code, or brand")
 
     if term:
@@ -155,7 +198,7 @@ elif choice == "Search Items":
 # Add New Item
 # -----------------------------
 elif choice == "Add New Item":
-    st.header("➕ Add New Stock Item")
+    section_header("➕ Add New Stock Item")
 
     col1, col2 = st.columns(2)
 
@@ -168,8 +211,8 @@ elif choice == "Add New Item":
     with col2:
         available = st.number_input("Available Stock", min_value=0)
         reorder = st.number_input("Reorder Level", min_value=0)
-        cost_price = st.number_input("Cost Price (ZMW)", min_value=0.0, format="%.2f")
-        price = st.number_input("Selling Price (ZMW)", min_value=0.0, format="%.2f")
+        cost_price = st.number_input("Cost Price (USD)", min_value=0.0, format="%.2f")
+        price = st.number_input("Selling Price (USD)", min_value=0.0, format="%.2f")
 
     if st.button("Add Item"):
         if not category or not item or not item_code or not brand:
@@ -201,7 +244,7 @@ elif choice == "Add New Item":
 # Receive Stock (by Code)
 # -----------------------------
 elif choice == "Receive Stock (by Code)":
-    st.header("📥 Receive Stock (Scan/Enter Item Code)")
+    section_header("📥 Receive Stock")
 
     if df.empty:
         st.warning("No items available.")
@@ -215,11 +258,10 @@ elif choice == "Receive Stock (by Code)":
                 st.error("No item found with that Item Code.")
             else:
                 item_row = matches.iloc[0]
-                st.success(f"Found: {item_row['Item']} ({item_row['Brand']})")
-                st.write(f"**Category:** {item_row['Category']}")
+                st.info(f"Found: {item_row['Item']} ({item_row['Brand']})")
                 st.write(f"**Current Stock:** {item_row['Available Stock']}")
-                st.write(f"**Cost Price:** ZMW {item_row['Cost Price']}")
-                st.write(f"**Selling Price:** ZMW {item_row['Price']}")
+                st.write(f"**Cost Price:** ${item_row['Cost Price']}")
+                st.write(f"**Selling Price:** ${item_row['Price']}")
 
         qty = st.number_input("Quantity Received", min_value=1)
 
@@ -238,10 +280,10 @@ elif choice == "Receive Stock (by Code)":
                 st.success("Stock updated!")
 
 # -----------------------------
-# Issue Stock (by Code) + SALES + PROFIT
+# Issue Stock (by Code)
 # -----------------------------
 elif choice == "Issue Stock (by Code)":
-    st.header("📤 Issue Stock (Scan/Enter Item Code)")
+    section_header("📤 Issue Stock")
 
     if df.empty:
         st.warning("No items available.")
@@ -255,10 +297,10 @@ elif choice == "Issue Stock (by Code)":
                 st.error("No item found with that Item Code.")
             else:
                 item_row = matches.iloc[0]
-                st.success(f"Found: {item_row['Item']} ({item_row['Brand']})")
+                st.info(f"Found: {item_row['Item']} ({item_row['Brand']})")
                 st.write(f"**Available Stock:** {item_row['Available Stock']}")
-                st.write(f"**Cost Price:** ZMW {item_row['Cost Price']}")
-                st.write(f"**Selling Price:** ZMW {item_row['Price']}")
+                st.write(f"**Cost Price:** ${item_row['Cost Price']}")
+                st.write(f"**Selling Price:** ${item_row['Price']}")
 
         qty = st.number_input("Quantity to Issue", min_value=1)
 
@@ -270,7 +312,6 @@ elif choice == "Issue Stock (by Code)":
             else:
                 idx = df.index[df["Item Code"].astype(str) == str(code)][0]
 
-                # Update stock
                 df.at[idx, "Available Stock"] -= qty
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
                 df.at[idx, "Stock Status"] = compute_status(
@@ -279,14 +320,12 @@ elif choice == "Issue Stock (by Code)":
                 )
                 save_data(df)
 
-                # Profit calculation
                 selling_price = item_row["Price"]
                 cost_price = item_row["Cost Price"]
                 total_sale = qty * selling_price
                 total_cost = qty * cost_price
                 profit = total_sale - total_cost
 
-                # Record sale
                 sale = {
                     "Item": item_row["Item"],
                     "Item Code": item_row["Item Code"],
@@ -302,13 +341,13 @@ elif choice == "Issue Stock (by Code)":
                 sales_df.loc[len(sales_df)] = sale
                 save_sales(sales_df)
 
-                st.success(f"Stock issued and sale recorded! Profit: ZMW {profit:,.2f}")
+                st.success(f"Sale recorded! Profit: ${profit:,.2f}")
 
 # -----------------------------
-# Sales Tracking + BEST SELLERS + PROFIT SUMMARY
+# Sales Tracking
 # -----------------------------
 elif choice == "Sales Tracking":
-    st.header("💰 Sales Tracking")
+    section_header("💰 Sales Tracking")
 
     if sales_df.empty:
         st.info("No sales recorded yet.")
@@ -333,26 +372,17 @@ elif choice == "Sales Tracking":
         total_profit = sales_df["Profit"].sum()
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total Revenue (ZMW)", f"{total_revenue:,.2f}")
-        col2.metric("Total Cost (ZMW)", f"{total_cost:,.2f}")
-        col3.metric("Total Profit (ZMW)", f"{total_profit:,.2f}")
+        col1.markdown(card_container("Total Revenue (USD)", f"${total_revenue:,.2f}", "#0078D4"))
+        col2.markdown(card_container("Total Cost (USD)", f"${total_cost:,.2f}", "#FFB900"))
+        col3.markdown(card_container("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"))
 
 # -----------------------------
 # Current Stock
 # -----------------------------
 elif choice == "Current Stock":
-    st.header("📦 Current Stock List")
+    section_header("📦 Current Stock List")
 
     if df.empty:
         st.warning("No stock data available.")
     else:
-        styled = df.style.apply(
-            lambda row: [
-                "background-color: #ffcccc" if row["Stock Status"] == "Out of Stock"
-                else "background-color: #fff3cd" if row["Stock Status"] == "Low Stock"
-                else ""
-                for _ in row
-            ],
-            axis=1
-        )
-        st.dataframe(styled, use_container_width=True)
+        st.dataframe(df, use_container_width=True)
