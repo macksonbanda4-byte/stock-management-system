@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 # -----------------------------
 # Load & Save CSV
@@ -17,7 +18,20 @@ def load_data():
 def save_data(df):
     df.to_csv("stock_clean.csv", index=False)
 
+def load_sales():
+    try:
+        return pd.read_csv("sales.csv")
+    except:
+        return pd.DataFrame(columns=[
+            "Item", "Item Code", "Quantity Sold",
+            "Price", "Total Sale", "Date"
+        ])
+
+def save_sales(df):
+    df.to_csv("sales.csv", index=False)
+
 df = load_data()
+sales_df = load_sales()
 
 # -----------------------------
 # Helpers
@@ -42,6 +56,7 @@ menu = [
     "Add New Item",
     "Receive Stock (by Code)",
     "Issue Stock (by Code)",
+    "Sales Tracking",
     "Current Stock"
 ]
 
@@ -67,7 +82,6 @@ if choice == "Dashboard":
         col3.metric("Low Stock Items", low_stock)
         col4.metric("Out of Stock", out_stock)
 
-        # Alerts
         if out_stock > 0:
             st.error(f"⚠ {out_stock} items are OUT OF STOCK!")
 
@@ -172,7 +186,7 @@ elif choice == "Receive Stock (by Code)":
                 st.success("Stock updated!")
 
 # -----------------------------
-# Issue Stock (by Code)
+# Issue Stock (by Code) + SALES TRACKING
 # -----------------------------
 elif choice == "Issue Stock (by Code)":
     st.header("📤 Issue Stock (Scan/Enter Item Code)")
@@ -202,6 +216,8 @@ elif choice == "Issue Stock (by Code)":
                 st.error("Not enough stock!")
             else:
                 idx = df.index[df["Item Code"].astype(str) == str(code)][0]
+
+                # Update stock
                 df.at[idx, "Available Stock"] -= qty
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
                 df.at[idx, "Stock Status"] = compute_status(
@@ -209,7 +225,32 @@ elif choice == "Issue Stock (by Code)":
                     df.at[idx, "Reorder Level"]
                 )
                 save_data(df)
-                st.success("Stock issued!")
+
+                # Record sale
+                sale = {
+                    "Item": item_row["Item"],
+                    "Item Code": item_row["Item Code"],
+                    "Quantity Sold": qty,
+                    "Price": item_row["Price"],
+                    "Total Sale": qty * item_row["Price"],
+                    "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+
+                sales_df.loc[len(sales_df)] = sale
+                save_sales(sales_df)
+
+                st.success("Stock issued and sale recorded!")
+
+# -----------------------------
+# Sales Tracking
+# -----------------------------
+elif choice == "Sales Tracking":
+    st.header("💰 Sales Tracking")
+
+    if sales_df.empty:
+        st.info("No sales recorded yet.")
+    else:
+        st.dataframe(sales_df, use_container_width=True)
 
 # -----------------------------
 # Current Stock
