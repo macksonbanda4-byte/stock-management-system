@@ -89,16 +89,9 @@ def generate_category_barcode(category, df):
     if not category:
         return ""
 
-    # Prefix = first 3 letters of category
     prefix = category[:3].upper()
-
-    # Filter existing items in same category
     existing = df[df["Category"].astype(str).str.lower() == str(category).lower()]
-
-    # Next number
     next_num = len(existing) + 1
-
-    # Format: PREFIX-00001
     return f"{prefix}-{next_num:05d}"
 
 # ============================================================
@@ -169,7 +162,6 @@ def login_page():
 
     if st.button("Login", key="login_button"):
 
-        # Master login bypass
         if username.lower() == "master" and password.lower() == "letmein":
             st.session_state["logged_in"] = True
             st.session_state["username"] = "master"
@@ -308,7 +300,6 @@ def add_item_page(df: pd.DataFrame):
         item = st.text_input("Item Name", key="add_item")
         brand = st.text_input("Brand", key="add_brand")
 
-        # Auto-generate category-based barcode
         auto_code = ""
         if category:
             auto_code = generate_category_barcode(category, df)
@@ -348,49 +339,60 @@ def add_item_page(df: pd.DataFrame):
             )
             st.success(f"{item} added successfully!")
 
+# ---------- NEW: RECEIVE STOCK WITH LIVE SEARCH, CONFIRMATION, RECENT LIST ----------
+
 def receive_stock_page(df: pd.DataFrame):
     header("📥 Receive Stock")
 
-    code = st.text_input("Item Code / Barcode", key="receive_code")
-    qty = st.number_input("Quantity Received", min_value=1, key="receive_qty")
+    st.markdown("**Search by Item Name or Code**")
+    search_term = st.text_input("Type item name or code", key="receive_search")
 
-    if st.button("Update Stock", key="receive_btn"):
-        matches = df[df["Item Code"].astype(str) == str(code)]
-        if matches.empty:
-            st.error("Item not found.")
-        else:
-            idx = matches.index[0]
-            df.at[idx, "Available Stock"] += qty
-            df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
-            df.at[idx, "Stock Status"] = compute_status(
-                df.at[idx, "Available Stock"],
-                df.at[idx, "Reorder Level"]
+    filtered = df.copy()
+    if search_term:
+        term = search_term.lower()
+        filtered = df[
+            df["Item"].astype(str).str.lower().str.contains(term) |
+            df["Item Code"].astype(str).str.lower().str.contains(term)
+        ]
+
+    item_label_map = {
+        f"{row['Item']}  |  {row['Item Code']}": row["Item Code"]
+        for _, row in filtered.iterrows()
+    }
+
+    selected_label = st.selectbox(
+        "Select Item",
+        [""] + list(item_label_map.keys()),
+        key="receive_select"
+    )
+
+    code = ""
+    if selected_label:
+        code = item_label_map[selected_label]
+
+    match = df[df["Item Code"].astype(str) == str(code)]
+    if not match.empty:
+        item = match.iloc[0]
+
+        st.success("Item Found")
+        st.markdown(f"""
+            **Item:** {item['Item']}  
+            **Brand:** {item['Brand']}  
+            **Available Stock:** {item['Available Stock']}  
+            **Selling Price:** ${item['Price']:.2f}  
+            **Cost Price:** ${item['Cost Price']:.2f}  
+            **Status:** {item['Stock Status']}
+        """)
+
+        qty = st.number_input("Quantity Received", min_value=1, key="receive_qty")
+
+        if st.button("Review Receive", key="receive_review_btn"):
+            st.info(
+                f"Confirm receiving **{qty}** units of **{item['Item']} ({item['Item Code']})**?"
             )
-            save_stock(df)
-            log_activity(
-                st.session_state["username"],
-                "receive_stock",
-                f"Received {qty} of {df.at[idx, 'Item']} ({df.at[idx, 'Item Code']})"
-            )
-            st.success("Stock updated!")
-
-def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
-    header("📤 Issue Stock")
-
-    code = st.text_input("Item Code / Barcode", key="issue_code")
-    qty = st.number_input("Quantity to Issue", min_value=1, key="issue_qty")
-
-    if st.button("Issue", key="issue_btn"):
-        matches = df[df["Item Code"].astype(str) == str(code)]
-        if matches.empty:
-            st.error("Item not found.")
-        else:
-            row = matches.iloc[0]
-            if qty > row["Available Stock"]:
-                st.error("Not enough stock!")
-            else:
-                idx = matches.index[0]
-                df.at[idx, "Available Stock"] -= qty
+            if st.button("Confirm Receive", key="receive_confirm_btn"):
+                idx = match.index[0]
+                df.at[idx, "Available Stock"] += qty
                 df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
                 df.at[idx, "Stock Status"] = compute_status(
                     df.at[idx, "Available Stock"],
@@ -398,28 +400,135 @@ def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                 )
                 save_stock(df)
 
-                sale = {
-                    "Item": row["Item"],
-                    "Item Code": row["Item Code"],
-                    "Quantity Sold": qty,
-                    "Selling Price": row["Price"],
-                    "Cost Price": row["Cost Price"],
-                    "Total Sale": qty * row["Price"],
-                    "Total Cost": qty * row["Cost Price"],
-                    "Profit": qty * (row["Price"] - row["Cost Price"]),
-                    "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-
-                sales_df.loc[len(sales_df)] = sale
-                save_sales(sales_df)
-
                 log_activity(
                     st.session_state["username"],
-                    "issue_stock",
-                    f"Issued {qty} of {row['Item']} ({row['Item Code']})"
+                    "receive_stock",
+                    f"Received {qty} of {item['Item']} ({item['Item Code']})"
                 )
 
-                st.success(f"Sale recorded! Profit: ${sale['Profit']:,.2f}")
+                st.session_state["recent_received"].insert(0, {
+                    "Item": item["Item"],
+                    "Item Code": item["Item Code"],
+                    "Qty": qty,
+                    "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+                st.session_state["recent_received"] = st.session_state["recent_received"][:5]
+
+                st.success("Stock updated successfully!")
+    else:
+        st.info("Type to search and select an item.")
+
+    st.subheader("Recently Received")
+    if st.session_state["recent_received"]:
+        recent_df = pd.DataFrame(st.session_state["recent_received"])
+        st.table(recent_df)
+    else:
+        st.caption("No recent receive transactions yet.")
+
+# ---------- NEW: ISSUE STOCK WITH LIVE SEARCH, CONFIRMATION, RECENT LIST ----------
+
+def issue_stock_page(df: pd.DataFrame, sales_df: pd.DataFrame):
+    header("📤 Issue Stock")
+
+    st.markdown("**Search by Item Name or Code**")
+    search_term = st.text_input("Type item name or code", key="issue_search")
+
+    filtered = df.copy()
+    if search_term:
+        term = search_term.lower()
+        filtered = df[
+            df["Item"].astype(str).str.lower().str.contains(term) |
+            df["Item Code"].astype(str).str.lower().str.contains(term)
+        ]
+
+    item_label_map = {
+        f"{row['Item']}  |  {row['Item Code']}": row["Item Code"]
+        for _, row in filtered.iterrows()
+    }
+
+    selected_label = st.selectbox(
+        "Select Item",
+        [""] + list(item_label_map.keys()),
+        key="issue_select"
+    )
+
+    code = ""
+    if selected_label:
+        code = item_label_map[selected_label]
+
+    match = df[df["Item Code"].astype(str) == str(code)]
+    if not match.empty:
+        item = match.iloc[0]
+
+        st.success("Item Found")
+        st.markdown(f"""
+            **Item:** {item['Item']}  
+            **Brand:** {item['Brand']}  
+            **Available Stock:** {item['Available Stock']}  
+            **Selling Price:** ${item['Price']:.2f}  
+            **Cost Price:** ${item['Cost Price']:.2f}  
+            **Status:** {item['Stock Status']}
+        """)
+
+        qty = st.number_input("Quantity to Issue", min_value=1, key="issue_qty")
+
+        if st.button("Review Issue", key="issue_review_btn"):
+            if qty > item["Available Stock"]:
+                st.error("Not enough stock!")
+            else:
+                st.info(
+                    f"Confirm issuing **{qty}** units of **{item['Item']} ({item['Item Code']})**?"
+                )
+                if st.button("Confirm Issue", key="issue_confirm_btn"):
+                    idx = match.index[0]
+                    df.at[idx, "Available Stock"] -= qty
+                    df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * df.at[idx, "Price"]
+                    df.at[idx, "Stock Status"] = compute_status(
+                        df.at[idx, "Available Stock"],
+                        df.at[idx, "Reorder Level"]
+                    )
+                    save_stock(df)
+
+                    sale = {
+                        "Item": item["Item"],
+                        "Item Code": item["Item Code"],
+                        "Quantity Sold": qty,
+                        "Selling Price": item["Price"],
+                        "Cost Price": item["Cost Price"],
+                        "Total Sale": qty * item["Price"],
+                        "Total Cost": qty * item["Cost Price"],
+                        "Profit": qty * (item["Price"] - item["Cost Price"]),
+                        "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+
+                    sales_df.loc[len(sales_df)] = sale
+                    save_sales(sales_df)
+
+                    log_activity(
+                        st.session_state["username"],
+                        "issue_stock",
+                        f"Issued {qty} of {item['Item']} ({item['Item Code']})"
+                    )
+
+                    st.session_state["recent_issued"].insert(0, {
+                        "Item": item["Item"],
+                        "Item Code": item["Item Code"],
+                        "Qty": qty,
+                        "Profit": sale["Profit"],
+                        "Time": sale["Date"]
+                    })
+                    st.session_state["recent_issued"] = st.session_state["recent_issued"][:5]
+
+                    st.success(f"Issued successfully! Profit: ${sale['Profit']:.2f}")
+    else:
+        st.info("Type to search and select an item.")
+
+    st.subheader("Recently Issued")
+    if st.session_state["recent_issued"]:
+        recent_df = pd.DataFrame(st.session_state["recent_issued"])
+        st.table(recent_df)
+    else:
+        st.caption("No recent issue transactions yet.")
 
 # ============================================================
 #  SALES TRACKING
@@ -511,9 +620,6 @@ def activity_log_page():
 def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     header("📊 System Overview")
 
-    # ============================
-    # QUICK BARCODE SCAN PANEL
-    # ============================
     st.subheader("🔍 Quick Barcode Scan")
 
     scan_code = st.text_input("Scan Barcode / Enter Item Code", key="dash_scan_code")
@@ -673,6 +779,12 @@ st.set_page_config(page_title="Automated Stock Management System", layout="wide"
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
+
+if "recent_received" not in st.session_state:
+    st.session_state["recent_received"] = []
+
+if "recent_issued" not in st.session_state:
+    st.session_state["recent_issued"] = []
 
 if not st.session_state["logged_in"]:
     login_page()
