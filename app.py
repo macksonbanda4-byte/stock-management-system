@@ -11,8 +11,8 @@ def load_data():
     except:
         return pd.DataFrame(columns=[
             "Category", "Item", "Item Code", "Brand",
-            "Available Stock", "Reorder Level", "Price",
-            "Total Value", "Stock Status"
+            "Available Stock", "Reorder Level", "Cost Price",
+            "Price", "Total Value", "Stock Status"
         ])
 
 def save_data(df):
@@ -24,7 +24,8 @@ def load_sales():
     except:
         return pd.DataFrame(columns=[
             "Item", "Item Code", "Quantity Sold",
-            "Price", "Total Sale", "Date"
+            "Selling Price", "Cost Price",
+            "Total Sale", "Total Cost", "Profit", "Date"
         ])
 
 def save_sales(df):
@@ -88,6 +89,11 @@ if choice == "Dashboard":
         if low_stock > 0:
             st.warning(f"⚠ {low_stock} items are LOW on stock!")
 
+        # Optional: total profit metric
+        if not sales_df.empty:
+            total_profit = sales_df["Profit"].sum()
+            st.metric("Total Profit (ZMW)", f"{total_profit:,.2f}")
+
 # -----------------------------
 # Search Items
 # -----------------------------
@@ -119,7 +125,8 @@ elif choice == "Add New Item":
     with col2:
         available = st.number_input("Available Stock", min_value=0)
         reorder = st.number_input("Reorder Level", min_value=0)
-        price = st.number_input("Price (ZMW)", min_value=0.0, format="%.2f")
+        cost_price = st.number_input("Cost Price (ZMW)", min_value=0.0, format="%.2f")
+        price = st.number_input("Selling Price (ZMW)", min_value=0.0, format="%.2f")
 
     if st.button("Add Item"):
         if not category or not item or not item_code or not brand:
@@ -137,6 +144,7 @@ elif choice == "Add New Item":
                 "Brand": brand,
                 "Available Stock": available,
                 "Reorder Level": reorder,
+                "Cost Price": cost_price,
                 "Price": price,
                 "Total Value": total_value,
                 "Stock Status": status
@@ -167,7 +175,8 @@ elif choice == "Receive Stock (by Code)":
                 st.success(f"Found: {item_row['Item']} ({item_row['Brand']})")
                 st.write(f"**Category:** {item_row['Category']}")
                 st.write(f"**Current Stock:** {item_row['Available Stock']}")
-                st.write(f"**Price:** ZMW {item_row['Price']}")
+                st.write(f"**Cost Price:** ZMW {item_row['Cost Price']}")
+                st.write(f"**Selling Price:** ZMW {item_row['Price']}")
 
         qty = st.number_input("Quantity Received", min_value=1)
 
@@ -186,7 +195,7 @@ elif choice == "Receive Stock (by Code)":
                 st.success("Stock updated!")
 
 # -----------------------------
-# Issue Stock (by Code) + SALES TRACKING
+# Issue Stock (by Code) + SALES + PROFIT
 # -----------------------------
 elif choice == "Issue Stock (by Code)":
     st.header("📤 Issue Stock (Scan/Enter Item Code)")
@@ -205,7 +214,8 @@ elif choice == "Issue Stock (by Code)":
                 item_row = matches.iloc[0]
                 st.success(f"Found: {item_row['Item']} ({item_row['Brand']})")
                 st.write(f"**Available Stock:** {item_row['Available Stock']}")
-                st.write(f"**Price:** ZMW {item_row['Price']}")
+                st.write(f"**Cost Price:** ZMW {item_row['Cost Price']}")
+                st.write(f"**Selling Price:** ZMW {item_row['Price']}")
 
         qty = st.number_input("Quantity to Issue", min_value=1)
 
@@ -226,23 +236,33 @@ elif choice == "Issue Stock (by Code)":
                 )
                 save_data(df)
 
+                # Profit calculation
+                selling_price = item_row["Price"]
+                cost_price = item_row["Cost Price"]
+                total_sale = qty * selling_price
+                total_cost = qty * cost_price
+                profit = total_sale - total_cost
+
                 # Record sale
                 sale = {
                     "Item": item_row["Item"],
                     "Item Code": item_row["Item Code"],
                     "Quantity Sold": qty,
-                    "Price": item_row["Price"],
-                    "Total Sale": qty * item_row["Price"],
+                    "Selling Price": selling_price,
+                    "Cost Price": cost_price,
+                    "Total Sale": total_sale,
+                    "Total Cost": total_cost,
+                    "Profit": profit,
                     "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
 
                 sales_df.loc[len(sales_df)] = sale
                 save_sales(sales_df)
 
-                st.success("Stock issued and sale recorded!")
+                st.success(f"Stock issued and sale recorded! Profit: ZMW {profit:,.2f}")
 
 # -----------------------------
-# Sales Tracking + BEST SELLERS
+# Sales Tracking + BEST SELLERS + PROFIT SUMMARY
 # -----------------------------
 elif choice == "Sales Tracking":
     st.header("💰 Sales Tracking")
@@ -257,10 +277,22 @@ elif choice == "Sales Tracking":
 
         best = sales_df.groupby(["Item", "Item Code"]).agg({
             "Quantity Sold": "sum",
-            "Total Sale": "sum"
+            "Total Sale": "sum",
+            "Total Cost": "sum",
+            "Profit": "sum"
         }).sort_values("Quantity Sold", ascending=False)
 
         st.dataframe(best, use_container_width=True)
+
+        st.subheader("📈 Profit Summary")
+        total_revenue = sales_df["Total Sale"].sum()
+        total_cost = sales_df["Total Cost"].sum()
+        total_profit = sales_df["Profit"].sum()
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Revenue (ZMW)", f"{total_revenue:,.2f}")
+        col2.metric("Total Cost (ZMW)", f"{total_cost:,.2f}")
+        col3.metric("Total Profit (ZMW)", f"{total_profit:,.2f}")
 
 # -----------------------------
 # Current Stock
