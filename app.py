@@ -179,7 +179,6 @@ def import_csv(label: str) -> pd.DataFrame | None:
 # ============================================================
 
 def login_page():
-    st.image("logo.png", width=220)
     st.markdown("<h1 style='color:#0078D4;text-align:center;'>🔐 Login</h1>", unsafe_allow_html=True)
 
     username = st.text_input("Username", key="login_username")
@@ -681,7 +680,6 @@ def activity_log_page():
 # ============================================================
 
 def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
-    st.image("logo.png", width=180)
     header("📊 System Overview")
 
     cost_col = ensure_cost_column(df)
@@ -809,6 +807,10 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
         total_profit = sales_df["Profit"].sum()
         st.markdown(card("Total Profit (USD)", f"${total_profit:,.2f}", "#107C10"), unsafe_allow_html=True)
 
+    # ============================================================
+    #  IMPROVED DASHBOARD ALERTS
+    # ============================================================
+
     st.subheader("⚠️ Stock Alerts")
 
     low_df = df[df["Stock Status"] == "Low Stock"]
@@ -924,7 +926,6 @@ if "username" in st.session_state and "role" in st.session_state:
         """,
         unsafe_allow_html=True
     )
-    st.sidebar.image("logo.png", use_column_width=True)
 
 if st.sidebar.button("Logout", key="logout_btn"):
     log_activity(st.session_state.get("username", "unknown"), "logout", "User logged out")
