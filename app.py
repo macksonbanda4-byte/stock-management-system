@@ -25,14 +25,14 @@ except ImportError:
 
 
 # ============================================================
-# FILE PATHS
+# FILE PATHS & CONSTANTS
 # ============================================================
 STOCK_FILE = "stock_export.csv"
 SALES_FILE = "sales.csv"
 USERS_FILE = "users.json"
 ACTIVITY_LOG_FILE = "activity_log.csv"
 BACKUP_DIR = "backups"
-CLIENT_DIR = "backups/clients"   # <--- Your choice (Option B)
+CLIENT_DIR = "backups/clients"
 BARCODE_DIR = "barcodes"
 
 LOCATIONS = ["Blue container", "Red container", "Shop"]
@@ -52,9 +52,10 @@ REQUIRED_STOCK_COLS = [
 def ensure_dir(path: str):
     Path(path).mkdir(parents=True, exist_ok=True)
 
+
 def ensure_all_folders():
     ensure_dir(BACKUP_DIR)
-    ensure_dir(CLIENT_DIR)     # <--- Auto-create client folder
+    ensure_dir(CLIENT_DIR)
     ensure_dir(BARCODE_DIR)
 
 
@@ -88,12 +89,44 @@ def log_activity(user, action, details=""):
 
 
 # ============================================================
-# NORMALIZE STOCK DATAFRAME
+# IMPROVED NORMALIZER (AUTO-REPAIRS CSV)
 # ============================================================
 def normalize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # Ensure required columns exist
+    # Clean column names
+    df.columns = [col.strip() for col in df.columns]
+
+    # Mapping of possible wrong names → correct names
+    rename_map = {
+        "cost": "Cost Price",
+        "costprice": "Cost Price",
+        "buying price": "Cost Price",
+        "purchase price": "Cost Price",
+        "price": "Cost Price",
+
+        "sellingprice": "Selling Price",
+        "sell price": "Selling Price",
+        "sale price": "Selling Price",
+
+        "qty": "Available Stock",
+        "quantity": "Available Stock",
+        "stock": "Available Stock",
+
+        "reorder": "Reorder Level",
+        "reorderlevel": "Reorder Level",
+
+        "itemcode": "Item Code",
+        "item code": "Item Code",
+
+        "total": "Total Value",
+        "totalvalue": "Total Value",
+    }
+
+    # Apply renaming
+    df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}, inplace=True)
+
+    # Ensure all required columns exist
     for col in REQUIRED_STOCK_COLS:
         if col not in df.columns:
             if col in ["Available Stock", "Reorder Level", "Cost Price", "Selling Price", "Total Value"]:
@@ -101,16 +134,21 @@ def normalize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 df[col] = ""
 
-    df["Available Stock"] = df["Available Stock"].astype(float)
-    df["Cost Price"] = df["Cost Price"].astype(float)
-    df["Selling Price"] = df["Selling Price"].astype(float)
+    # Convert numeric columns safely
+    numeric_cols = ["Available Stock", "Reorder Level", "Cost Price", "Selling Price", "Total Value"]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Recalculate Total Value
     df["Total Value"] = df["Available Stock"] * df["Cost Price"]
 
+    # Recalculate Stock Status
     df["Stock Status"] = df.apply(
         lambda r: "LOW" if r["Available Stock"] <= r["Reorder Level"] else "OK",
         axis=1
     )
 
+    # Default location if missing
     df["Location"] = df["Location"].replace("", "Shop")
 
     return df
@@ -133,27 +171,16 @@ def generate_barcode_image(item_code: str) -> str | None:
 # AUTOMATIC ITEM CODE GENERATOR
 # ============================================================
 def generate_item_code(df_stock: pd.DataFrame, category: str) -> str:
-    """
-    Generates item code using:
-    - First 3 letters of category (uppercase)
-    - Independent sequence per category
-    Example:
-        Solar Panels → SOL-001
-        Solar → SOL-001
-        Solar Accessories → SOL-001
-    """
     if not category:
         return ""
 
     prefix = category.strip().upper()[:3]
 
-    # Filter items with same category
     same_cat = df_stock[df_stock["Category"].str.upper() == category.strip().upper()]
 
     if same_cat.empty:
         return f"{prefix}-001"
 
-    # Extract existing numbers
     numbers = []
     for code in same_cat["Item Code"]:
         try:
@@ -286,7 +313,7 @@ def load_stock():
 
 def save_stock(df):
     df.to_csv(STOCK_FILE, index=False)
-    load_stock.clear()  # refresh cache
+    load_stock.clear()
 
 
 @st.cache_data
@@ -402,7 +429,6 @@ def add_item_page(df_stock, current_user):
     cost_price = st.number_input("Cost Price", min_value=0.0, step=0.1)
     selling_price = st.number_input("Selling Price", min_value=0.0, step=0.1)
 
-    # Auto-generate item code
     if category:
         auto_code = generate_item_code(df_stock, category)
         st.text_input("Generated Item Code", value=auto_code, disabled=True)
@@ -565,13 +591,11 @@ def transfer_stock_page(df_stock, current_user):
 
         push_undo_snapshot(df_stock, load_sales())
 
-        # Deduct from source
         new_from_qty = int(from_row["Available Stock"]) - qty
         df_stock.at[from_idx, "Available Stock"] = new_from_qty
         df_stock.at[from_idx, "Total Value"] = new_from_qty * float(from_row["Cost Price"])
         df_stock.at[from_idx, "Stock Status"] = "OK" if new_from_qty > int(from_row["Reorder Level"]) else "LOW"
 
-        # Add to destination
         if to_mask.any():
             to_idx = same_item[to_mask].index[0]
             to_row = df_stock.loc[to_idx]
@@ -664,10 +688,6 @@ def generate_issue_pdf_report(sale):
 # SAVE CLIENT EXPENSE FILE
 # ============================================================
 def save_client_expense(sale):
-    """
-    Saves sale to: backups/clients/<client_name>.csv
-    Filename format: lowercase_with_underscores
-    """
     client_name = sale["Customer"].strip().lower().replace(" ", "_")
     filepath = f"{CLIENT_DIR}/{client_name}.csv"
 
@@ -706,7 +726,6 @@ def issue_stock_page(df_stock, df_sales, current_user):
     qty = st.number_input("Quantity to Issue", min_value=1, step=1)
 
     if st.button("Issue Stock"):
-        # Customer name required (your choice: A)
         if not customer.strip():
             st.error("Customer name is required before issuing stock.")
             return
@@ -717,63 +736,10 @@ def issue_stock_page(df_stock, df_sales, current_user):
 
         push_undo_snapshot(df_stock, df_sales)
 
-        # Update stock
         new_qty = int(row["Available Stock"]) - qty
         df_stock.at[idx, "Available Stock"] = new_qty
-        df_stock.at[idx, "Total Value"] = new_qty * float(row["Cost Price"])
-        df_stock.at[idx, "Stock Status"] = "OK" if new_qty > int(row["Reorder Level"]) else "LOW"
-
-        save_stock(df_stock)
-
-        # Create sale record
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        total = qty * float(row["Selling Price"])
-
-        sale = {
-            "Date": now,
-            "Item Code": row["Item Code"],
-            "Item": row["Item"],
-            "Quantity Sold": qty,
-            "Selling Price": row["Selling Price"],
-            "Total": total,
-            "Customer": customer,
-            "Issued By": current_user,
-        }
-
-        df_sales = pd.concat([df_sales, pd.DataFrame([sale])], ignore_index=True)
-        save_sales(df_sales)
-
-        # Save client expense file
-        save_client_expense(sale)
-
-        # Generate delivery note
-        text_report = generate_issue_text_report(sale)
-        pdf_report = generate_issue_pdf_report(sale)
-
-        log_activity(current_user, "Issue Stock",
-                     f"{qty} of {row['Item']} ({row['Item Code']}) to {customer}")
-
-        st.success("Stock issued successfully.")
-
-        st.subheader("Delivery Note Preview")
-        st.text(text_report)
-
-        st.download_button(
-            "Download Delivery Note (Text)",
-            text_report,
-            file_name=f"delivery_note_{row['Item Code']}.txt"
-        )
-
-        if pdf_report:
-            st.download_button(
-                "Download Delivery Note (PDF)",
-                pdf_report,
-                file_name=f"delivery_note_{row['Item Code']}.pdf"
-            )
-        else:
-            st.warning("PDF generation not available (ReportLab not installed).")
-
-# ============================================================
+        df_stock.at[idx, "Total Value"]
+        # ============================================================
 # LOW STOCK REPORT
 # ============================================================
 def low_stock_report(df_stock):
@@ -786,10 +752,7 @@ def low_stock_report(df_stock):
         return
 
     st.warning("The following items are low on stock:")
-    st.dataframe(low_df[[
-        "Category", "Item", "Item Code", "Available Stock",
-        "Reorder Level", "Location", "Supplier"
-    ]])
+    st.dataframe(low_df)
 
 
 # ============================================================
@@ -798,13 +761,7 @@ def low_stock_report(df_stock):
 def stock_summary_report(df_stock):
     st.header("📦 Stock Summary")
 
-    st.dataframe(df_stock[[
-        "Category", "Item", "Item Code", "Brand",
-        "Available Stock", "Reorder Level",
-        "Cost Price", "Selling Price",
-        "Total Value", "Stock Status",
-        "Location", "Supplier"
-    ]])
+    st.dataframe(df_stock)
 
     total_value = df_stock["Total Value"].sum()
     st.info(f"**Total Stock Value:** ZMW {total_value:,.2f}")
@@ -839,7 +796,6 @@ def backup_system():
         backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
         ensure_dir(backup_folder)
 
-        # Copy main files
         for file in [STOCK_FILE, SALES_FILE, USERS_FILE, ACTIVITY_LOG_FILE]:
             if os.path.exists(file):
                 shutil.copy(file, f"{backup_folder}/{os.path.basename(file)}")
@@ -955,7 +911,6 @@ def main():
     user = st.session_state["username"]
     role = st.session_state["role"]
 
-    # ---------------- Dashboard ----------------
     if menu == "Dashboard":
         st.header("📊 Dashboard Overview")
 
@@ -978,7 +933,6 @@ def main():
         else:
             st.dataframe(df_sales.tail(10))
 
-    # ---------------- Stock Management ----------------
     elif menu == "Add Item":
         add_item_page(df_stock, user)
 
@@ -994,11 +948,9 @@ def main():
     elif menu == "Transfer Stock":
         transfer_stock_page(df_stock, user)
 
-    # ---------------- Issue Stock ----------------
     elif menu == "Issue Stock":
         issue_stock_page(df_stock, df_sales, user)
 
-    # ---------------- Reports ----------------
     elif menu == "Low Stock Report":
         low_stock_report(df_stock)
 
@@ -1008,29 +960,24 @@ def main():
     elif menu == "Sales Report":
         sales_report(df_sales)
 
-    # ---------------- Import / Export ----------------
     elif menu == "Import Stock":
         import_stock(df_stock, user)
 
     elif menu == "Export Stock":
         export_stock(df_stock)
 
-    # ---------------- Backup / Restore ----------------
     elif menu == "Backup System":
         backup_system()
 
     elif menu == "Restore System":
         restore_system()
 
-    # ---------------- Activity Log ----------------
     elif menu == "Activity Log":
         activity_log_page()
 
-    # ---------------- User Management ----------------
     elif menu == "User Management":
         user_management_page(user, role)
 
-    # ---------------- Undo ----------------
     elif menu == "Undo Last Action":
         if can_undo():
             df_stock, df_sales = perform_undo()
@@ -1038,7 +985,6 @@ def main():
         else:
             st.info("Nothing to undo.")
 
-    # ---------------- Logout ----------------
     elif menu == "Logout":
         st.session_state.clear()
         st.rerun()
