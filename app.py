@@ -8,20 +8,13 @@ import shutil
 from pathlib import Path
 from io import BytesIO
 
-# Optional extras
+# Optional extras: BARCODE ONLY (no PDF)
 try:
     from barcode import Code128
     from barcode.writer import ImageWriter
     BARCODE_AVAILABLE = True
 except ImportError:
     BARCODE_AVAILABLE = False
-
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen import canvas
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
 
 
 # ============================================================
@@ -349,7 +342,7 @@ def perform_undo():
 
 
 # ============================================================
-# FIXED ITEM PICKER (NO MORE KEYERROR)
+# FIXED ITEM PICKER
 # ============================================================
 def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
     st.subheader(title)
@@ -398,8 +391,216 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
 
     return idx, row
 
+
 # ============================================================
-# DELIVERY NOTE (TEXT)
+# ADD / EDIT / DELETE / RECEIVE / TRANSFER PAGES
+# ============================================================
+def add_item_page(df_stock, current_user):
+    st.header("➕ Add New Item")
+
+    category = st.text_input("Category")
+    item = st.text_input("Item Name")
+    brand = st.text_input("Brand")
+    supplier = st.text_input("Supplier")
+    location = st.selectbox("Location", LOCATIONS)
+
+    auto_code = generate_item_code(df_stock, category)
+    item_code = st.text_input("Item Code", value=auto_code)
+
+    available = st.number_input("Available Stock", min_value=0, step=1)
+    reorder = st.number_input("Reorder Level", min_value=0, step=1)
+    cost_price = st.number_input("Cost Price ($)", min_value=0.0, step=0.01, format="%.2f")
+    selling_price = st.number_input("Selling Price ($)", min_value=0.0, step=0.01, format="%.2f")
+
+    if st.button("Save Item"):
+        if not category or not item or not item_code:
+            st.error("Category, Item Name, and Item Code are required.")
+            return
+
+        push_undo_snapshot(df_stock, load_sales())
+
+        total_value = available * cost_price
+        status = "LOW" if available <= reorder else "OK"
+
+        new_row = {
+            "Category": category,
+            "Item": item,
+            "Item Code": item_code,
+            "Brand": brand,
+            "Available Stock": available,
+            "Reorder Level": reorder,
+            "Cost Price": cost_price,
+            "Selling Price": selling_price,
+            "Total Value": total_value,
+            "Stock Status": status,
+            "Location": location,
+            "Supplier": supplier,
+        }
+
+        df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
+        save_stock(df_stock)
+
+        log_activity(current_user, "Add Item", f"{item} ({item_code})")
+        st.success("Item added successfully.")
+
+
+def edit_item_page(df_stock, current_user):
+    st.header("✏️ Edit Item")
+
+    idx, row = pick_item_with_search(df_stock, "Select Item to Edit")
+    if row is None:
+        return
+
+    category = st.text_input("Category", value=row["Category"])
+    item = st.text_input("Item Name", value=row["Item"])
+    brand = st.text_input("Brand", value=row["Brand"])
+    supplier = st.text_input("Supplier", value=row["Supplier"])
+    location = st.selectbox("Location", LOCATIONS, index=LOCATIONS.index(row["Location"]) if row["Location"] in LOCATIONS else 0)
+
+    item_code = st.text_input("Item Code", value=row["Item Code"])
+
+    available = st.number_input("Available Stock", min_value=0, step=1, value=int(row["Available Stock"]))
+    reorder = st.number_input("Reorder Level", min_value=0, step=1, value=int(row["Reorder Level"]))
+    cost_price = st.number_input("Cost Price ($)", min_value=0.0, step=0.01, value=float(row["Cost Price"]), format="%.2f")
+    selling_price = st.number_input("Selling Price ($)", min_value=0.0, step=0.01, value=float(row["Selling Price"]), format="%.2f")
+
+    if st.button("Save Changes"):
+        push_undo_snapshot(df_stock, load_sales())
+
+        df_stock.at[idx, "Category"] = category
+        df_stock.at[idx, "Item"] = item
+        df_stock.at[idx, "Item Code"] = item_code
+        df_stock.at[idx, "Brand"] = brand
+        df_stock.at[idx, "Supplier"] = supplier
+        df_stock.at[idx, "Location"] = location
+        df_stock.at[idx, "Available Stock"] = available
+        df_stock.at[idx, "Reorder Level"] = reorder
+        df_stock.at[idx, "Cost Price"] = cost_price
+        df_stock.at[idx, "Selling Price"] = selling_price
+        df_stock.at[idx, "Total Value"] = available * cost_price
+        df_stock.at[idx, "Stock Status"] = "LOW" if available <= reorder else "OK"
+
+        save_stock(df_stock)
+        log_activity(current_user, "Edit Item", f"{item} ({item_code})")
+        st.success("Item updated successfully.")
+
+
+def delete_item_page(df_stock, current_user):
+    st.header("🗑️ Delete Item")
+
+    idx, row = pick_item_with_search(df_stock, "Select Item to Delete", allow_location_filter=False)
+    if row is None:
+        return
+
+    st.warning(f"Are you sure you want to delete: {row['Item']} ({row['Item Code']})?")
+
+    if st.button("Confirm Delete"):
+        push_undo_snapshot(df_stock, load_sales())
+
+        df_stock = df_stock.drop(index=idx).reset_index(drop=True)
+        save_stock(df_stock)
+
+        log_activity(current_user, "Delete Item", f"{row['Item']} ({row['Item Code']})")
+        st.success("Item deleted successfully.")
+
+
+def receive_stock_page(df_stock, current_user):
+    st.header("📥 Receive Stock")
+
+    idx, row = pick_item_with_search(df_stock, "Select Item to Receive")
+    if row is None:
+        return
+
+    qty = st.number_input("Quantity Received", min_value=1, step=1)
+    cost_price = st.number_input("Cost Price per Unit ($)", min_value=0.0, step=0.01,
+                                 value=float(row["Cost Price"]), format="%.2f")
+
+    if st.button("Receive"):
+        push_undo_snapshot(df_stock, load_sales())
+
+        new_qty = int(row["Available Stock"]) + qty
+        df_stock.at[idx, "Available Stock"] = new_qty
+        df_stock.at[idx, "Cost Price"] = cost_price
+        df_stock.at[idx, "Total Value"] = new_qty * cost_price
+        df_stock.at[idx, "Stock Status"] = "LOW" if new_qty <= int(row["Reorder Level"]) else "OK"
+
+        save_stock(df_stock)
+
+        log_activity(current_user, "Receive Stock",
+                     f"{qty} of {row['Item']} ({row['Item Code']}) at ${cost_price}")
+        st.success("Stock received successfully.")
+
+
+def transfer_stock_page(df_stock, current_user):
+    st.header("🔁 Transfer Stock Between Locations")
+
+    idx, row = pick_item_with_search(df_stock, "Select Item to Transfer", allow_location_filter=False)
+    if row is None:
+        return
+
+    from_location = st.selectbox("From Location", LOCATIONS)
+    to_location = st.selectbox("To Location", [loc for loc in LOCATIONS if loc != from_location])
+    qty = st.number_input("Quantity to Transfer", min_value=1, step=1)
+
+    if st.button("Transfer"):
+        if from_location == to_location:
+            st.error("From and To locations must be different.")
+            return
+
+        same_item = df_stock[
+            (df_stock["Item Code"] == row["Item Code"]) &
+            (df_stock["Location"] == from_location)
+        ]
+
+        if same_item.empty:
+            st.error("No stock found at the selected 'From' location.")
+            return
+
+        from_idx = same_item.index[0]
+        from_row = df_stock.loc[from_idx]
+
+        if qty > int(from_row["Available Stock"]):
+            st.error("Not enough stock at the source location.")
+            return
+
+        push_undo_snapshot(df_stock, load_sales())
+
+        new_from_qty = int(from_row["Available Stock"]) - qty
+        df_stock.at[from_idx, "Available Stock"] = new_from_qty
+        df_stock.at[from_idx, "Total Value"] = new_from_qty * float(from_row["Cost Price"])
+        df_stock.at[from_idx, "Stock Status"] = "LOW" if new_from_qty <= int(from_row["Reorder Level"]) else "OK"
+
+        target = df_stock[
+            (df_stock["Item Code"] == row["Item Code"]) &
+            (df_stock["Location"] == to_location)
+        ]
+
+        if target.empty:
+            new_row = from_row.copy()
+            new_row["Location"] = to_location
+            new_row["Available Stock"] = qty
+            new_row["Total Value"] = qty * float(from_row["Cost Price"])
+            new_row["Stock Status"] = "LOW" if qty <= int(from_row["Reorder Level"]) else "OK"
+            df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
+        else:
+            to_idx = target.index[0]
+            to_row = df_stock.loc[to_idx]
+            new_to_qty = int(to_row["Available Stock"]) + qty
+            df_stock.at[to_idx, "Available Stock"] = new_to_qty
+            df_stock.at[to_idx, "Total Value"] = new_to_qty * float(to_row["Cost Price"])
+            df_stock.at[to_idx, "Stock Status"] = "LOW" if new_to_qty <= int(to_row["Reorder Level"]) else "OK"
+
+        save_stock(df_stock)
+
+        log_activity(
+            current_user,
+            "Transfer Stock",
+            f"{qty} of {row['Item']} ({row['Item Code']}) from {from_location} to {to_location}"
+        )
+        st.success("Stock transferred successfully.")
+
+# ============================================================
+# DELIVERY NOTE (TEXT ONLY, NO PDF)
 # ============================================================
 def generate_issue_text_report(sale):
     lines = [
@@ -421,49 +622,6 @@ def generate_issue_text_report(sale):
         "Thank you for doing business with ID Solar Solutions."
     ]
     return "\n".join(lines)
-
-
-# ============================================================
-# DELIVERY NOTE (PDF)
-# ============================================================
-def generate_issue_pdf_report(sale):
-    if not PDF_AVAILABLE:
-        return None
-
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-
-    y = height - 50
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, "ID SOLAR SOLUTIONS")
-    y -= 30
-
-    c.setFont("Helvetica", 12)
-    fields = [
-        ("DATE", sale["Date"]),
-        ("CUSTOMER", sale["Customer"]),
-        ("ISSUED BY", sale["Issued By"]),
-        ("ITEM", sale["Item"]),
-        ("ITEM CODE", sale["Item Code"]),
-        ("QUANTITY", sale["Quantity Sold"]),
-        ("SELLING PRICE", f"${sale['Selling Price']}"),
-        ("TOTAL", f"${sale['Total']}"),
-    ]
-
-    for label, value in fields:
-        c.drawString(50, y, f"{label}: {value}")
-        y -= 20
-
-    y -= 20
-    c.drawString(50, y, "SIGNATURE (ISSUED BY): ______________________")
-    y -= 30
-    c.drawString(50, y, "SIGNATURE (CUSTOMER): _______________________")
-
-    c.showPage()
-    c.save()
-    buffer.seek(0)
-    return buffer
 
 
 # ============================================================
@@ -545,7 +703,6 @@ def issue_stock_page(df_stock, df_sales, current_user):
         save_client_expense(sale)
 
         text_report = generate_issue_text_report(sale)
-        pdf_report = generate_issue_pdf_report(sale)
 
         log_activity(current_user, "Issue Stock",
                      f"{qty} of {row['Item']} ({row['Item Code']}) to {customer}")
@@ -560,15 +717,6 @@ def issue_stock_page(df_stock, df_sales, current_user):
             text_report,
             file_name=f"delivery_note_{row['Item Code']}.txt"
         )
-
-        if pdf_report:
-            st.download_button(
-                "Download Delivery Note (PDF)",
-                pdf_report,
-                file_name=f"delivery_note_{row['Item Code']}.pdf"
-            )
-        else:
-            st.warning("PDF generation not available.")
 
 # ============================================================
 # LOW STOCK REPORT
