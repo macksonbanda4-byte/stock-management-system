@@ -361,10 +361,13 @@ def perform_undo():
 
 
 # ============================================================
-# SEARCH + ITEM PICKER
+# SEARCH + ITEM PICKER (FIXED)
 # ============================================================
 def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
     st.subheader(title)
+
+    # Normalize full DF
+    df = normalize_stock_df(df)
 
     search = st.text_input("Search by Item Code, Name, or Brand")
     filtered = df.copy()
@@ -385,6 +388,9 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
         st.warning("No matching items found.")
         return None, None
 
+    # Normalize filtered DF again to guarantee columns
+    filtered = normalize_stock_df(filtered)
+
     display_series = filtered["Item"] + " | " + filtered["Item Code"].astype(str)
     choice = st.selectbox("Item list", display_series)
 
@@ -393,14 +399,14 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
 
     st.info(
         f"""
-**Item:** {row['Item']}
-**Brand:** {row['Brand']}
-**Location:** {row['Location']}
-**Available Stock:** {row['Available Stock']}
-**Reorder Level:** {row['Reorder Level']}
-**Cost Price:** {row['Cost Price']}
-**Selling Price:** {row['Selling Price']}
-**Status:** {row['Stock Status']}
+**Item:** {row.get('Item', '')}
+**Brand:** {row.get('Brand', '')}
+**Location:** {row.get('Location', '')}
+**Available Stock:** {row.get('Available Stock', 0)}
+**Reorder Level:** {row.get('Reorder Level', 0)}
+**Cost Price:** {row.get('Cost Price', 0)}
+**Selling Price:** {row.get('Selling Price', 0)}
+**Status:** {row.get('Stock Status', '')}
 """
     )
 
@@ -738,8 +744,57 @@ def issue_stock_page(df_stock, df_sales, current_user):
 
         new_qty = int(row["Available Stock"]) - qty
         df_stock.at[idx, "Available Stock"] = new_qty
-        df_stock.at[idx, "Total Value"]
-        # ============================================================
+        df_stock.at[idx, "Total Value"] = new_qty * float(row["Cost Price"])
+        df_stock.at[idx, "Stock Status"] = "OK" if new_qty > int(row["Reorder Level"]) else "LOW"
+
+        save_stock(df_stock)
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        total = qty * float(row["Selling Price"])
+
+        sale = {
+            "Date": now,
+            "Item Code": row["Item Code"],
+            "Item": row["Item"],
+            "Quantity Sold": qty,
+            "Selling Price": row["Selling Price"],
+            "Total": total,
+            "Customer": customer,
+            "Issued By": current_user,
+        }
+
+        df_sales = pd.concat([df_sales, pd.DataFrame([sale])], ignore_index=True)
+        save_sales(df_sales)
+
+        save_client_expense(sale)
+
+        text_report = generate_issue_text_report(sale)
+        pdf_report = generate_issue_pdf_report(sale)
+
+        log_activity(current_user, "Issue Stock",
+                     f"{qty} of {row['Item']} ({row['Item Code']}) to {customer}")
+
+        st.success("Stock issued successfully.")
+
+        st.subheader("Delivery Note Preview")
+        st.text(text_report)
+
+        st.download_button(
+            "Download Delivery Note (Text)",
+            text_report,
+            file_name=f"delivery_note_{row['Item Code']}.txt"
+        )
+
+        if pdf_report:
+            st.download_button(
+                "Download Delivery Note (PDF)",
+                pdf_report,
+                file_name=f"delivery_note_{row['Item Code']}.pdf"
+            )
+        else:
+            st.warning("PDF generation not available.")
+
+# ============================================================
 # LOW STOCK REPORT
 # ============================================================
 def low_stock_report(df_stock):
