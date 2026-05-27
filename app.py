@@ -16,7 +16,7 @@ PO_FILE = "purchase_orders.csv"
 BACKUP_DIR = "backups"
 
 # ============================================================
-#  ALERTS (0️⃣ SMS / Email / WhatsApp)
+#  ALERTS (SMS / Email)
 # ============================================================
 TEST_MODE = True
 
@@ -114,7 +114,7 @@ def log_activity(user: str, action: str, details: str = "") -> None:
     save_activity(df)
 
 # ============================================================
-#  AUTH / LOGIN (1️⃣)
+#  LOGIN PAGE
 # ============================================================
 def login_page():
     st.header("🔐 Login")
@@ -133,6 +133,7 @@ def login_page():
         users = load_users()
         match = users[(users["username"].str.lower() == username.lower()) &
                       (users["password"].str.lower() == password.lower())]
+
         if not match.empty:
             st.session_state["logged_in"] = True
             st.session_state["username"] = match.iloc[0]["username"]
@@ -142,6 +143,9 @@ def login_page():
         else:
             st.error("Invalid username or password.")
 
+# ============================================================
+#  MANAGE USERS
+# ============================================================
 def manage_users_page():
     require_admin()
     st.header("👥 Manage Users")
@@ -163,68 +167,7 @@ def manage_users_page():
     st.dataframe(users)
 
 # ============================================================
-#  STOCK OPS (2️⃣) – Add, Receive, Issue, Edit, Delete, Undo
-# ============================================================
-# (Insert your existing stock operation functions here, updated with Location and Supplier fields)
-
-def auto_generate_po(item_row):
-    po = {
-        "Supplier": item_row["Supplier"],
-        "Item": item_row["Item"],
-        "Quantity": item_row["Reorder Level"]*2,
-        "Date": datetime.now().strftime("%Y-%m-%d")
-    }
-    pd.DataFrame([po]).to_csv(PO_FILE, mode="a", header=not os.path.exists(PO_FILE), index=False)
-    notify_users(f"Auto PO generated for {item_row['Item']} to {item_row['Supplier']}")
-
-# ============================================================
-#  REPORTS (3️⃣)
-# ============================================================
-def reports_page(df: pd.DataFrame, sales_df: pd.DataFrame):
-    st.header("📑 Reports")
-    st.subheader("Stock Summary")
-    st.dataframe(df[["Location","Supplier","Item","Available Stock","Total Value","Stock Status"]])
-
-    st.subheader("Sales Summary")
-    total_revenue = sales_df["Total Sale"].sum()
-    total_profit = sales_df["Profit"].sum()
-    st.metric("Total Revenue", f"${total_revenue:,.2f}")
-    st.metric("Total Profit", f"${total_profit:,.2f}")
-
-    st.download_button("Download Stock Report", df.to_csv(index=False).encode("utf-8"), "stock_report.csv")
-    st.download_button("Download Sales Report", sales_df.to_csv(index=False).encode("utf-8"), "sales_report.csv")
-
-# ============================================================
-#  SALES TRACKING (4️⃣)
-# ============================================================
-def sales_tracking_page(sales_df: pd.DataFrame):
-    st.header("💰 Sales Tracking")
-    if sales_df.empty:
-        st.info("No sales recorded yet.")
-    else:
-        st.dataframe(sales_df)
-        total_revenue = sales_df["Total Sale"].sum()
-        total_cost = sales_df["Total Cost"].sum()
-        total_profit = sales_df["Profit"].sum()
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Revenue", f"${total_revenue:,.2f}")
-        col2.metric("Cost", f"${total_cost:,.2f}")
-        col3.metric("Profit", f"${total_profit:,.2f}")
-        profit_data = sales_df.groupby("Item")["Profit"].sum().sort_values(ascending=False)
-        st.bar_chart(profit_data)
-
-# ============================================================
-#  DASHBOARD (5️⃣)
-# ============================================================
-def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
-    st.header("📊 Dashboard")
-    # (same as earlier dashboard code, with location + supplier info)
-
-# ============================================================
-#  IMPORT / EXPORT + BACKUP/RESTORE (6️⃣)
-# ============================================================
-def import_export_page(df: pd.DataFrame, sales_df: pd.Data # ============================================================
-#  DASHBOARD (5️⃣)
+#  DASHBOARD
 # ============================================================
 def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     st.header("📊 Dashboard")
@@ -263,7 +206,43 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
                     st.success("Issued successfully.")
 
 # ============================================================
-#  IMPORT / EXPORT + BACKUP/RESTORE (6️⃣)
+#  REPORTS
+# ============================================================
+def reports_page(df: pd.DataFrame, sales_df: pd.DataFrame):
+    st.header("📑 Reports")
+    st.subheader("Stock Summary")
+    st.dataframe(df[["Location","Supplier","Item","Available Stock","Total Value","Stock Status"]])
+
+    st.subheader("Sales Summary")
+    total_revenue = sales_df["Total Sale"].sum()
+    total_profit = sales_df["Profit"].sum()
+    st.metric("Total Revenue", f"${total_revenue:,.2f}")
+    st.metric("Total Profit", f"${total_profit:,.2f}")
+
+    st.download_button("Download Stock Report", df.to_csv(index=False).encode("utf-8"), "stock_report.csv")
+    st.download_button("Download Sales Report", sales_df.to_csv(index=False).encode("utf-8"), "sales_report.csv")
+
+# ============================================================
+#  SALES TRACKING
+# ============================================================
+def sales_tracking_page(sales_df: pd.DataFrame):
+    st.header("💰 Sales Tracking")
+    if sales_df.empty:
+        st.info("No sales recorded yet.")
+    else:
+        st.dataframe(sales_df)
+        total_revenue = sales_df["Total Sale"].sum()
+        total_cost = sales_df["Total Cost"].sum()
+        total_profit = sales_df["Profit"].sum()
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Revenue", f"${total_revenue:,.2f}")
+        col2.metric("Cost", f"${total_cost:,.2f}")
+        col3.metric("Profit", f"${total_profit:,.2f}")
+        profit_data = sales_df.groupby("Item")["Profit"].sum().sort_values(ascending=False)
+        st.bar_chart(profit_data)
+
+# ============================================================
+#  IMPORT / EXPORT + BACKUP/RESTORE
 # ============================================================
 def import_export_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     st.header("📥 Import / Export")
@@ -304,7 +283,7 @@ def import_export_page(df: pd.DataFrame, sales_df: pd.DataFrame):
             st.success("Sales restored!")
 
 # ============================================================
-#  ACTIVITY LOG (7️⃣)
+#  ACTIVITY LOG
 # ============================================================
 def activity_log_page():
     st.header("📜 Activity Log")
@@ -315,19 +294,17 @@ def activity_log_page():
         st.dataframe(log_df.sort_values("timestamp", ascending=False))
 
 # ============================================================
-#  VIEW SYSTEM CODE (Strict Admin Only)
+#  PLACEHOLDER FUNCTIONS (to avoid crashes)
 # ============================================================
-def view_code_page():
-    if st.session_state.get("role") != "admin":
-        st.error("You do not have permission to view system code.")
-        return
-    st.header("🔒 System Code (Admin Only)")
-    with open("app.py", "r") as f:
-        code = f.read()
-    st.code(code, language="python")
+def add_item_page(df): st.info("Add Item Page (to be implemented)")
+def receive_stock_page(df): st.info("Receive Stock Page (to be implemented)")
+def issue_stock_page(df, sales_df): st.info("Issue Stock Page (to be implemented)")
+def edit_item_page(df): st.info("Edit Item Page (to be implemented)")
+def delete_item_page(df): st.info("Delete Item Page (to be implemented)")
+def undo_last_action(df, sales_df): st.info("Undo Last Action (to be implemented)")
 
 # ============================================================
-#  MAIN NAVIGATION (8️⃣)
+#  MAIN NAVIGATION
 # ============================================================
 def main():
     st.sidebar.title("📌 Navigation")
@@ -342,7 +319,7 @@ def main():
     if st.session_state.get("role") == "admin":
         choice = st.sidebar.radio("Go to:", [
             "Dashboard","Add Item","Receive Stock","Issue Stock","Edit Item","Delete Item","Undo Last Action",
-            "Reports","Sales Tracking","Import / Export","Activity Log","Manage Users","View System Code"
+            "Reports","Sales Tracking","Import / Export","Activity Log","Manage Users"
         ])
     else:
         choice = st.sidebar.radio("Go to:", [
@@ -362,7 +339,6 @@ def main():
     elif choice == "Import / Export": import_export_page(df, sales_df)
     elif choice == "Activity Log": activity_log_page()
     elif choice == "Manage Users": manage_users_page()
-    elif choice == "View System Code": view_code_page()
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
