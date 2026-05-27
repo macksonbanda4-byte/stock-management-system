@@ -247,7 +247,12 @@ def dashboard_page(df: pd.DataFrame, sales_df: pd.DataFrame):
     low_stock = df[df["Available Stock"] <= df["Reorder Level"]]
     if not low_stock.empty:
         st.warning("⚠️ Low stock items detected:")
-        st.dataframe(low_stock[["Item", "Location", "Supplier", "Available Stock", "Reorder Level"]])
+        expected_cols = ["Item", "Location", "Supplier", "Available Stock", "Reorder Level"]
+        available_cols = [c for c in expected_cols if c in low_stock.columns]
+        if available_cols:
+            st.dataframe(low_stock[available_cols])
+        else:
+            st.info("Low stock items detected, but required columns are missing in the CSV.")
 
     st.subheader("Quick Issue by Barcode / Item Code")
     scan_code = st.text_input("Scan Barcode / Enter Item Code")
@@ -690,7 +695,6 @@ def undo_last_action(df: pd.DataFrame, sales_df: pd.DataFrame):
         else:
             st.error("Unknown action type; cannot undo.")
 
-        # refresh in session
         st.experimental_rerun()
 
 
