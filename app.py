@@ -619,65 +619,29 @@ def user_management_page(current_user, current_role):
             save_users(users)
             log_activity(current_user, "Reset Password", reset_user)
             st.success("Password reset successfully.")
-
-from fpdf import FPDF
-
 # ============================================================
-# PDF GENERATION (PREMIUM REPORT)
+# GENERATE TEXT REPORT (NO PDF, NO ERRORS)
 # ============================================================
-def generate_issue_pdf(sale_record, report_number):
-    pdf = FPDF()
-    pdf.add_page()
+def generate_issue_text_report(sale_record, report_number):
+    report = f"""
+id Solar Solutions
+Issued Stock Report - {report_number}
 
-    # Header
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "id Solar Solutions", ln=True, align="C")
+-----------------------------------------
+Date & Time:     {sale_record['Date']}
+Item:            {sale_record['Item']}
+Item Code:       {sale_record['Item Code']}
+Quantity Issued: {sale_record['Quantity Sold']}
+Unit Price:      USD {sale_record['Price']:,.2f}
+Total Amount:    USD {sale_record['Total']:,.2f}
+Customer:        {sale_record['Customer']}
+Issued By:       {sale_record['Issued By']}
+-----------------------------------------
 
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 8, f"Issued Stock Report - {report_number}", ln=True, align="C")
-    pdf.ln(5)
+Authorized Signature: ______________________
 
-    # Line
-    pdf.set_draw_color(0, 0, 0)
-    pdf.set_line_width(0.5)
-    pdf.line(10, 30, 200, 30)
-    pdf.ln(10)
-
-    # Report Details Table
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(50, 8, "Field", border=1)
-    pdf.cell(130, 8, "Value", border=1, ln=True)
-
-    def row(label, value):
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(50, 8, label, border=1)
-        pdf.set_font("Arial", "", 11)
-        pdf.cell(130, 8, str(value), border=1, ln=True)
-
-    row("Date & Time", sale_record["Date"])
-    row("Item", sale_record["Item"])
-    row("Item Code", sale_record["Item Code"])
-    row("Quantity Issued", sale_record["Quantity Sold"])
-    row("Unit Price", f"USD {sale_record['Price']:,.2f}")
-    row("Total Amount", f"USD {sale_record['Total']:,.2f}")
-    row("Customer", sale_record["Customer"])
-    row("Issued By", sale_record["Issued By"])
-
-    pdf.ln(15)
-
-    # Signature Area
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "Authorized Signature:", ln=True)
-    pdf.ln(15)
-    pdf.line(10, pdf.get_y(), 100, pdf.get_y())
-    pdf.ln(10)
-
-    # Footer
-    pdf.set_y(-20)
-    pdf.set_font("Arial", "I", 10)
-    pdf.cell(0, 10, f"Page {pdf.page_no()}", align="C")
-
-    return pdf.output(dest="S").encode("latin-1")
+"""
+    return report
 
 
 # ============================================================
@@ -791,15 +755,17 @@ def main():
                     # Generate report number
                     report_number = f"ISSUE-{len(df_sales):04d}"
 
-                    # Generate PDF
-                    pdf_bytes = generate_issue_pdf(sale, report_number)
+                    # Generate text report
+                    report_text = generate_issue_text_report(sale, report_number)
 
                     st.download_button(
-                        label="Download PDF Report",
-                        data=pdf_bytes,
-                        file_name=f"{report_number}.pdf",
-                        mime="application/pdf"
+                        label="Download Issue Report",
+                        data=report_text,
+                        file_name=f"{report_number}.txt",
+                        mime="text/plain"
                     )
+
+                    st.text_area("Report Preview", report_text, height=300)
 
     elif choice == "Reports":
         reports_page(df_stock, df_sales)
