@@ -619,7 +619,6 @@ def user_management_page(current_user, current_role):
             save_users(users)
             log_activity(current_user, "Reset Password", reset_user)
             st.success("Password reset successfully.")
-
 from fpdf import FPDF
 
 # ============================================================
@@ -819,3 +818,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
