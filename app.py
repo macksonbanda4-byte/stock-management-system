@@ -916,3 +916,103 @@ def activity_log_page():
 
     df = pd.read_csv(ACTIVITY_LOG_FILE)
     st.dataframe(df)
+# ============================================================
+# MAIN APP (MENU + ROUTING)
+# ============================================================
+def main():
+    require_login()
+
+    st.sidebar.title("ID Solar Stock System")
+    st.sidebar.write(f"Logged in as: **{st.session_state['username']}** ({st.session_state['role']})")
+
+    menu = st.sidebar.radio(
+        "Navigation",
+        [
+            "Dashboard",
+            "Add Item",
+            "Edit Item",
+            "Delete Item",
+            "Receive Stock",
+            "Transfer Stock",
+            "Issue Stock",
+            "Low Stock Report",
+            "Stock Summary",
+            "Sales Report",
+            "Import Stock",
+            "Export Stock",
+            "Backup System",
+            "Restore System",
+            "Activity Log",
+            "User Management",
+            "Undo Last Action",
+            "Logout"
+        ]
+    )
+
+    df_stock = load_stock()
+    df_sales = load_sales()
+    user = st.session_state["username"]
+    role = st.session_state["role"]
+
+    # ---------------- Dashboard ----------------
+    if menu == "Dashboard":
+        st.header("📊 Dashboard Overview")
+
+        total_items = len(df_stock)
+        total_value = df_stock["Total Value"].sum()
+        low_stock_count = len(df_stock[df_stock["Stock Status"] == "LOW"])
+        total_sales = df_sales["Total"].astype(float).sum()
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Stock Items", total_items)
+            st.metric("Low Stock Items", low_stock_count)
+        with col2:
+            st.metric("Total Stock Value (ZMW)", f"{total_value:,.2f}")
+            st.metric("Total Sales (ZMW)", f"{total_sales:,.2f}")
+
+        st.subheader("Recent Sales")
+        if df_sales.empty:
+            st.info("No sales recorded yet.")
+        else:
+            st.dataframe(df_sales.tail(10))
+
+    # ---------------- Stock Management ----------------
+    elif menu == "Add Item":
+        add_item_page(df_stock, user)
+
+    elif menu == "Edit Item":
+        edit_item_page(df_stock, user)
+
+    elif menu == "Delete Item":
+        delete_item_page(df_stock, user)
+
+    elif menu == "Receive Stock":
+        receive_stock_page(df_stock, user)
+
+    elif menu == "Transfer Stock":
+        transfer_stock_page(df_stock, user)
+
+    # ---------------- Issue Stock ----------------
+    elif menu == "Issue Stock":
+        issue_stock_page(df_stock, df_sales, user)
+
+    # ---------------- Reports ----------------
+    elif menu == "Low Stock Report":
+        low_stock_report(df_stock)
+
+    elif menu == "Stock Summary":
+        stock_summary_report(df_stock)
+
+    elif menu == "Sales Report":
+        sales_report(df_sales)
+
+    # ---------------- Import / Export ----------------
+    elif menu == "Import Stock":
+        import_stock(df_stock, user)
+
+    elif menu == "Export Stock":
+        export_stock(df_stock)
+
+    # ---------------- Backup / Restore ----------------
+    elif menu ==
