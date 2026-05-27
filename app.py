@@ -281,6 +281,7 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
     )
 
     return idx, row
+
 # ============================================================
 # ADD ITEM PAGE
 # ============================================================
@@ -632,11 +633,40 @@ def dashboard_page(df_stock, df_sales):
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Items", total_items)
     col2.metric("Total Stock Units", int(total_stock))
-    col3.metric("Total Stock Value", f"K{total_value:,.2f}")
+    col3.metric("Total Stock Value", f"USD {total_value:,.2f}")
 
     st.subheader("Low Stock Items")
     low_stock = df_stock[df_stock["Available Stock"] <= df_stock["Reorder Level"]]
     st.dataframe(low_stock)
+
+
+# ============================================================
+# PRINTABLE ISSUE REPORT
+# ============================================================
+def generate_issue_report(sale_record):
+    st.subheader("Issued Stock Report")
+
+    report = f"""
+    **Issued Stock Report**
+
+    **Date & Time:** {sale_record['Date']}
+    **Item:** {sale_record['Item']}
+    **Item Code:** {sale_record['Item Code']}
+    **Quantity Issued:** {sale_record['Quantity Sold']}
+    **Unit Price:** USD {sale_record['Price']:,.2f}
+    **Total Amount:** USD {sale_record['Total']:,.2f}
+    **Customer:** {sale_record['Customer']}
+    **Issued By:** {sale_record['Issued By']}
+    """
+
+    st.markdown(report)
+
+    st.download_button(
+        label="Print / Download Report",
+        data=report,
+        file_name="issued_stock_report.txt",
+        mime="text/plain"
+    )
 
 
 # ============================================================
@@ -678,28 +708,74 @@ def main():
 
     if choice == "Dashboard":
         dashboard_page(df_stock, df_sales)
+
     elif choice == "Add Item":
         add_item_page(df_stock, current_user)
+
     elif choice == "Edit Item":
         edit_item_page(df_stock, current_user)
+
     elif choice == "Delete Item":
         delete_item_page(df_stock, current_user)
+
     elif choice == "Receive Stock":
         receive_stock_page(df_stock, current_user)
+
     elif choice == "Issue Stock":
-        issue_stock_page(df_stock, df_sales, current_user)
+        # Modified Issue Stock to include printable report
+        st.header("Issue Stock")
+
+        idx, row = pick_item_with_search(df_stock, "Search Item to Issue")
+        if row is not None:
+            qty = st.number_input("Quantity to Issue", min_value=1, step=1)
+            customer = st.text_input("Customer Name (optional)")
+
+            if st.button("Issue"):
+                if qty > int(row["Available Stock"]):
+                    st.error("Not enough stock available.")
+                else:
+                    push_undo_snapshot(df_stock, df_sales)
+
+                    df_stock.at[idx, "Available Stock"] = int(row["Available Stock"]) - qty
+                    df_stock.at[idx, "Total Value"] = df_stock.at[idx, "Available Stock"] * float(row["Price"])
+
+                    sale = {
+                        "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Item Code": row["Item Code"],
+                        "Item": row["Item"],
+                        "Quantity Sold": qty,
+                        "Price": float(row["Price"]),
+                        "Total": qty * float(row["Price"]),
+                        "Customer": customer,
+                        "Issued By": current_user,
+                    }
+
+                    df_sales.loc[len(df_sales)] = sale
+
+                    save_stock(df_stock)
+                    save_sales(df_sales)
+                    log_activity(current_user, "Issue Stock", f"{qty} of {row['Item']} ({row['Item Code']})")
+
+                    st.success("Stock issued successfully.")
+
+                    # Show printable report
+                    generate_issue_report(sale)
+
     elif choice == "Reports":
         reports_page(df_stock, df_sales)
+
     elif choice == "Import / Export":
         import_export_page(df_stock, current_user)
+
     elif choice == "Backup & Restore":
         backup_restore_page(current_user)
+
     elif choice == "Activity Log":
         activity_log_page()
+
     elif choice == "User Management":
         user_management_page(current_user, current_role)
 
 
 if __name__ == "__main__":
     main()
-
