@@ -966,6 +966,7 @@ def main():
     user = st.session_state["username"]
     role = st.session_state["role"]
 
+    # ---------------- Dashboard ----------------
     if menu == "Dashboard":
         st.header("📊 Dashboard Overview")
 
@@ -979,8 +980,8 @@ def main():
             st.metric("Total Stock Items", total_items)
             st.metric("Low Stock Items", low_stock_count)
         with col2:
-            st.metric("Total Stock Value (ZMW)", f"{total_value:,.2f}")
-            st.metric("Total Sales (ZMW)", f"{total_sales:,.2f}")
+            st.metric("Total Stock Value ($)", f"${total_value:,.2f}")
+            st.metric("Total Sales ($)", f"${total_sales:,.2f}")
 
         st.subheader("Recent Sales")
         if df_sales.empty:
@@ -988,6 +989,7 @@ def main():
         else:
             st.dataframe(df_sales.tail(10))
 
+    # ---------------- Stock Management ----------------
     elif menu == "Add Item":
         add_item_page(df_stock, user)
 
@@ -1003,9 +1005,11 @@ def main():
     elif menu == "Transfer Stock":
         transfer_stock_page(df_stock, user)
 
+    # ---------------- Issue Stock ----------------
     elif menu == "Issue Stock":
         issue_stock_page(df_stock, df_sales, user)
 
+    # ---------------- Reports ----------------
     elif menu == "Low Stock Report":
         low_stock_report(df_stock)
 
@@ -1015,24 +1019,29 @@ def main():
     elif menu == "Sales Report":
         sales_report(df_sales)
 
+    # ---------------- Import / Export ----------------
     elif menu == "Import Stock":
         import_stock(df_stock, user)
 
     elif menu == "Export Stock":
         export_stock(df_stock)
 
+    # ---------------- Backup / Restore ----------------
     elif menu == "Backup System":
         backup_system()
 
     elif menu == "Restore System":
         restore_system()
 
+    # ---------------- Activity Log ----------------
     elif menu == "Activity Log":
         activity_log_page()
 
+    # ---------------- User Management ----------------
     elif menu == "User Management":
         user_management_page(user, role)
 
+    # ---------------- Undo ----------------
     elif menu == "Undo Last Action":
         if can_undo():
             df_stock, df_sales = perform_undo()
@@ -1040,6 +1049,7 @@ def main():
         else:
             st.info("Nothing to undo.")
 
+    # ---------------- Logout ----------------
     elif menu == "Logout":
         st.session_state.clear()
         st.rerun()
