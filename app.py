@@ -916,4 +916,3 @@ def activity_log_page():
 
     df = pd.read_csv(ACTIVITY_LOG_FILE)
     st.dataframe(df)
-
