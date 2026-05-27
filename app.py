@@ -916,6 +916,7 @@ def activity_log_page():
 
     df = pd.read_csv(ACTIVITY_LOG_FILE)
     st.dataframe(df)
+
 # ============================================================
 # MAIN APP (MENU + ROUTING)
 # ============================================================
@@ -1015,4 +1016,36 @@ def main():
         export_stock(df_stock)
 
     # ---------------- Backup / Restore ----------------
-    elif menu ==
+    elif menu == "Backup System":
+        backup_system()
+
+    elif menu == "Restore System":
+        restore_system()
+
+    # ---------------- Activity Log ----------------
+    elif menu == "Activity Log":
+        activity_log_page()
+
+    # ---------------- User Management ----------------
+    elif menu == "User Management":
+        user_management_page(user, role)
+
+    # ---------------- Undo ----------------
+    elif menu == "Undo Last Action":
+        if can_undo():
+            df_stock, df_sales = perform_undo()
+            st.success("Undo completed successfully.")
+        else:
+            st.info("Nothing to undo.")
+
+    # ---------------- Logout ----------------
+    elif menu == "Logout":
+        st.session_state.clear()
+        st.rerun()
+
+
+# ============================================================
+# RUN APP
+# ============================================================
+if __name__ == "__main__":
+    main()
