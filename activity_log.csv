@@ -1,0 +1,3 @@
+timestamp,user,action,details
+2026-05-24 18:11:19,master,login,Master login
+2026-05-24 18:12:57,master,add_user,Added user Ackson (admin)
