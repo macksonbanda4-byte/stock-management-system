@@ -620,6 +620,66 @@ def user_management_page(current_user, current_role):
             log_activity(current_user, "Reset Password", reset_user)
             st.success("Password reset successfully.")
 
+from fpdf import FPDF
+
+# ============================================================
+# PDF GENERATION (PREMIUM REPORT)
+# ============================================================
+def generate_issue_pdf(sale_record, report_number):
+    pdf = FPDF()
+    pdf.add_page()
+
+    # Header
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "id Solar Solutions", ln=True, align="C")
+
+    pdf.set_font("Arial", "", 12)
+    pdf.cell(0, 8, f"Issued Stock Report - {report_number}", ln=True, align="C")
+    pdf.ln(5)
+
+    # Line
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_line_width(0.5)
+    pdf.line(10, 30, 200, 30)
+    pdf.ln(10)
+
+    # Report Details Table
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(50, 8, "Field", border=1)
+    pdf.cell(130, 8, "Value", border=1, ln=True)
+
+    def row(label, value):
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(50, 8, label, border=1)
+        pdf.set_font("Arial", "", 11)
+        pdf.cell(130, 8, str(value), border=1, ln=True)
+
+    row("Date & Time", sale_record["Date"])
+    row("Item", sale_record["Item"])
+    row("Item Code", sale_record["Item Code"])
+    row("Quantity Issued", sale_record["Quantity Sold"])
+    row("Unit Price", f"USD {sale_record['Price']:,.2f}")
+    row("Total Amount", f"USD {sale_record['Total']:,.2f}")
+    row("Customer", sale_record["Customer"])
+    row("Issued By", sale_record["Issued By"])
+
+    pdf.ln(15)
+
+    # Signature Area
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "Authorized Signature:", ln=True)
+    pdf.ln(15)
+    pdf.line(10, pdf.get_y(), 100, pdf.get_y())
+    pdf.ln(10)
+
+    # Footer
+    pdf.set_y(-20)
+    pdf.set_font("Arial", "I", 10)
+    pdf.cell(0, 10, f"Page {pdf.page_no()}", align="C")
+
+    return pdf.output(dest="S").encode("latin-1")
+
+
 # ============================================================
 # DASHBOARD PAGE
 # ============================================================
@@ -638,35 +698,6 @@ def dashboard_page(df_stock, df_sales):
     st.subheader("Low Stock Items")
     low_stock = df_stock[df_stock["Available Stock"] <= df_stock["Reorder Level"]]
     st.dataframe(low_stock)
-
-
-# ============================================================
-# PRINTABLE ISSUE REPORT
-# ============================================================
-def generate_issue_report(sale_record):
-    st.subheader("Issued Stock Report")
-
-    report = f"""
-    **Issued Stock Report**
-
-    **Date & Time:** {sale_record['Date']}
-    **Item:** {sale_record['Item']}
-    **Item Code:** {sale_record['Item Code']}
-    **Quantity Issued:** {sale_record['Quantity Sold']}
-    **Unit Price:** USD {sale_record['Price']:,.2f}
-    **Total Amount:** USD {sale_record['Total']:,.2f}
-    **Customer:** {sale_record['Customer']}
-    **Issued By:** {sale_record['Issued By']}
-    """
-
-    st.markdown(report)
-
-    st.download_button(
-        label="Print / Download Report",
-        data=report,
-        file_name="issued_stock_report.txt",
-        mime="text/plain"
-    )
 
 
 # ============================================================
@@ -722,7 +753,6 @@ def main():
         receive_stock_page(df_stock, current_user)
 
     elif choice == "Issue Stock":
-        # Modified Issue Stock to include printable report
         st.header("Issue Stock")
 
         idx, row = pick_item_with_search(df_stock, "Search Item to Issue")
@@ -758,8 +788,18 @@ def main():
 
                     st.success("Stock issued successfully.")
 
-                    # Show printable report
-                    generate_issue_report(sale)
+                    # Generate report number
+                    report_number = f"ISSUE-{len(df_sales):04d}"
+
+                    # Generate PDF
+                    pdf_bytes = generate_issue_pdf(sale, report_number)
+
+                    st.download_button(
+                        label="Download PDF Report",
+                        data=pdf_bytes,
+                        file_name=f"{report_number}.pdf",
+                        mime="application/pdf"
+                    )
 
     elif choice == "Reports":
         reports_page(df_stock, df_sales)
