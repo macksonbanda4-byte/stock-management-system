@@ -717,7 +717,6 @@ def issue_stock_page(df_stock, df_sales, current_user):
             text_report,
             file_name=f"delivery_note_{row['Item Code']}.txt"
         )
-
 # ============================================================
 # LOW STOCK REPORT
 # ============================================================
@@ -853,7 +852,7 @@ def activity_log_page():
     st.dataframe(df)
 
 # ============================================================
-# MAIN APP (MENU + ROUTING)
+# MAIN APP (MENU + ROUTING) — ERROR‑SAFE VERSION
 # ============================================================
 def main():
     require_login()
@@ -887,16 +886,34 @@ def main():
 
     df_stock = load_stock()
     df_sales = load_sales()
+
+    # --- SAFETY FIX: Ensure required sales columns exist ---
+    required_sales_cols = ["Date", "Item Code", "Item", "Quantity Sold",
+                           "Selling Price", "Total", "Customer", "Issued By"]
+
+    for col in required_sales_cols:
+        if col not in df_sales.columns:
+            df_sales[col] = 0
+
     user = st.session_state["username"]
     role = st.session_state["role"]
 
+    # ============================================================
+    # DASHBOARD
+    # ============================================================
     if menu == "Dashboard":
         st.header("📊 Dashboard Overview")
 
         total_items = len(df_stock)
         total_value = df_stock["Total Value"].sum()
+
         low_stock_count = len(df_stock[df_stock["Stock Status"] == "LOW"])
-        total_sales = df_sales["Total"].astype(float).sum()
+
+        # --- SAFETY FIX: Prevent crash if Total column missing ---
+        try:
+            total_sales = df_sales["Total"].astype(float).sum()
+        except:
+            total_sales = 0
 
         col1, col2 = st.columns(2)
         with col1:
@@ -912,6 +929,9 @@ def main():
         else:
             st.dataframe(df_sales.tail(10))
 
+    # ============================================================
+    # ROUTING
+    # ============================================================
     elif menu == "Add Item":
         add_item_page(df_stock, user)
 
