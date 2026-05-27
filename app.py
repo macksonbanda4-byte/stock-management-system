@@ -1,12 +1,23 @@
+import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime
 
-STOCK_FILE = "stock_export.csv"   # or stock_clean.csv depending on what you use
+# ============================================================
+# CONFIG
+# ============================================================
+STOCK_FILE = "stock_export.csv"
 SALES_FILE = "sales.csv"
 
+LOCATIONS = ["Blue container", "Red container", "Shop"]
+
+
+# ============================================================
+# LOAD & SAVE FUNCTIONS
+# ============================================================
 def load_stock():
+    """Load stock_export.csv and normalize columns."""
     if not os.path.exists(STOCK_FILE):
-        # empty frame with expected columns
         cols = [
             "Category", "Item", "Item Code", "Brand",
             "Available Stock", "Reorder Level",
@@ -17,7 +28,7 @@ def load_stock():
 
     df = pd.read_csv(STOCK_FILE)
 
-    # --- normalize column names from both CSV versions ---
+    # Normalize column names
     rename_map = {
         "CATEGORY": "Category",
         "Item": "Item",
@@ -36,7 +47,7 @@ def load_stock():
     }
     df.rename(columns=rename_map, inplace=True)
 
-    # --- ensure required columns exist ---
+    # Ensure required columns exist
     required_cols = [
         "Category", "Item", "Item Code", "Brand",
         "Available Stock", "Reorder Level",
@@ -50,21 +61,33 @@ def load_stock():
             else:
                 df[col] = ""
 
-    # default Location if empty
+    # Default location = Shop
     df["Location"] = df["Location"].replace("", "Shop")
 
-    # recompute total value if needed
+    # Recompute total value
     df["Total Value"] = df["Available Stock"].astype(float) * df["Price"].astype(float)
 
     return df
 
 
-def save_stock(df: pd.DataFrame):
+def save_stock(df):
     df.to_csv(STOCK_FILE, index=False)
-import streamlit as st
 
-LOCATIONS = ["Blue container", "Red container", "Shop"]
 
+def load_sales():
+    if not os.path.exists(SALES_FILE):
+        cols = ["Date", "Item Code", "Item", "Quantity Sold", "Price", "Total", "Customer"]
+        return pd.DataFrame(columns=cols)
+    return pd.read_csv(SALES_FILE)
+
+
+def save_sales(df):
+    df.to_csv(SALES_FILE, index=False)
+
+
+# ============================================================
+# SEARCH + ITEM PICKER
+# ============================================================
 def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
     st.subheader(title)
 
@@ -105,14 +128,133 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
     )
 
     return idx, row
-def issue_stock_page(df, sales_df):
-    st.header("Issue Stock")
 
-    idx, row = pick_item_with_search(df, title="Search & Select Item to Issue")
+# ============================================================
+# ADD ITEM PAGE
+# ============================================================
+def add_item_page(df):
+    st.header("Add New Item")
+
+    category = st.text_input("Category")
+    item = st.text_input("Item Name")
+    item_code = st.text_input("Item Code")
+    brand = st.text_input("Brand")
+    supplier = st.text_input("Supplier")
+    location = st.selectbox("Location", LOCATIONS, index=2)
+
+    qty = st.number_input("Initial Stock", min_value=0, step=1)
+    reorder = st.number_input("Reorder Level", min_value=0, step=1)
+    price = st.number_input("Unit Price", min_value=0.0, step=0.1)
+
+    if st.button("Add Item"):
+        new_row = {
+            "Category": category,
+            "Item": item,
+            "Item Code": item_code,
+            "Brand": brand,
+            "Available Stock": qty,
+            "Reorder Level": reorder,
+            "Price": price,
+            "Total Value": qty * price,
+            "Stock Status": "OK",
+            "Location": location,
+            "Supplier": supplier,
+        }
+        df.loc[len(df)] = new_row
+        save_stock(df)
+        st.success("Item added successfully.")
+
+
+# ============================================================
+# EDIT ITEM PAGE
+# ============================================================
+def edit_item_page(df):
+    st.header("Edit Item")
+
+    idx, row = pick_item_with_search(df, "Search Item to Edit")
     if row is None:
         return
 
-    qty = st.number_input("Quantity to issue", min_value=1, step=1)
+    category = st.text_input("Category", value=row["Category"])
+    item = st.text_input("Item Name", value=row["Item"])
+    item_code = st.text_input("Item Code", value=row["Item Code"])
+    brand = st.text_input("Brand", value=row["Brand"])
+    supplier = st.text_input("Supplier", value=row["Supplier"])
+
+    location = st.selectbox(
+        "Location",
+        LOCATIONS,
+        index=LOCATIONS.index(row["Location"]) if row["Location"] in LOCATIONS else 2
+    )
+
+    qty = st.number_input("Available Stock", min_value=0, step=1, value=int(row["Available Stock"]))
+    reorder = st.number_input("Reorder Level", min_value=0, step=1, value=int(row["Reorder Level"]))
+    price = st.number_input("Unit Price", min_value=0.0, step=0.1, value=float(row["Price"]))
+
+    if st.button("Save Changes"):
+        df.at[idx, "Category"] = category
+        df.at[idx, "Item"] = item
+        df.at[idx, "Item Code"] = item_code
+        df.at[idx, "Brand"] = brand
+        df.at[idx, "Supplier"] = supplier
+        df.at[idx, "Location"] = location
+        df.at[idx, "Available Stock"] = qty
+        df.at[idx, "Reorder Level"] = reorder
+        df.at[idx, "Price"] = price
+        df.at[idx, "Total Value"] = qty * price
+
+        save_stock(df)
+        st.success("Item updated successfully.")
+
+
+# ============================================================
+# DELETE ITEM PAGE
+# ============================================================
+def delete_item_page(df):
+    st.header("Delete Item")
+
+    idx, row = pick_item_with_search(df, "Search Item to Delete")
+    if row is None:
+        return
+
+    if st.button("Delete Item"):
+        df.drop(idx, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        save_stock(df)
+        st.success("Item deleted successfully.")
+
+
+# ============================================================
+# RECEIVE STOCK PAGE
+# ============================================================
+def receive_stock_page(df):
+    st.header("Receive Stock")
+
+    idx, row = pick_item_with_search(df, "Search Item to Receive")
+    if row is None:
+        return
+
+    qty = st.number_input("Quantity Received", min_value=1, step=1)
+
+    if st.button("Receive"):
+        df.at[idx, "Available Stock"] = int(row["Available Stock"]) + qty
+        df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * float(row["Price"])
+        save_stock(df)
+        st.success("Stock received successfully.")
+
+
+# ============================================================
+# ISSUE STOCK PAGE
+# ============================================================
+def issue_stock_page(df, sales_df):
+    st.header("Issue Stock")
+
+    idx, row = pick_item_with_search(df, "Search Item to Issue")
+    if row is None:
+        return
+
+    qty = st.number_input("Quantity to Issue", min_value=1, step=1)
+    customer = st.text_input("Customer Name (optional)")
 
     if st.button("Issue"):
         if qty > int(row["Available Stock"]):
@@ -122,44 +264,87 @@ def issue_stock_page(df, sales_df):
         df.at[idx, "Available Stock"] = int(row["Available Stock"]) - qty
         df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * float(row["Price"])
 
-        # TODO: append to sales_df and save if you already do that
+        sale = {
+            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Item Code": row["Item Code"],
+            "Item": row["Item"],
+            "Quantity Sold": qty,
+            "Price": row["Price"],
+            "Total": qty * float(row["Price"]),
+            "Customer": customer,
+        }
+        sales_df.loc[len(sales_df)] = sale
+
         save_stock(df)
+        save_sales(sales_df)
+
         st.success("Stock issued successfully.")
-def receive_stock_page(df):
-    st.header("Receive Stock")
 
-    idx, row = pick_item_with_search(df, title="Search & Select Item to Receive")
-    if row is None:
-        return
 
-    qty = st.number_input("Quantity to receive", min_value=1, step=1)
+# ============================================================
+# REPORTS PAGE
+# ============================================================
+def reports_page(df, sales_df):
+    st.header("Reports")
 
-    if st.button("Receive"):
-        df.at[idx, "Available Stock"] = int(row["Available Stock"]) + qty
-        df.at[idx, "Total Value"] = df.at[idx, "Available Stock"] * float(row["Price"])
-        save_stock(df)
-        st.success("Stock received successfully.")
-location = st.selectbox("Location", LOCATIONS, index=2)  # default "Shop"
-supplier = st.text_input("Supplier")
+    st.subheader("Stock Summary")
+    cols = ["Location", "Supplier", "Item", "Available Stock", "Total Value", "Stock Status"]
+    cols = [c for c in cols if c in df.columns]
+    st.dataframe(df[cols])
 
-# when building the new row dict:
-new_row = {
-    "Category": category,
-    "Item": item,
-    "Item Code": item_code,
-    "Brand": brand,
-    "Available Stock": qty,
-    "Reorder Level": reorder_level,
-    "Price": price,
-    "Total Value": qty * price,
-    "Stock Status": "Okay",  # or your logic
-    "Location": location,
-    "Supplier": supplier,
-}location = st.selectbox(
-    "Location",
-    LOCATIONS,
-    index=LOCATIONS.index(row.get("Location", "Shop")) if row.get("Location", "Shop") in LOCATIONS else 2
-)
-supplier = st.text_input("Supplier", value=row.get("Supplier", ""))
-st.dataframe(df[["Location","Supplier","Item","Available Stock","Total Value","Stock Status"]])
+    st.subheader("Sales Summary")
+    st.dataframe(sales_df)
 
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+def dashboard_page(df):
+    st.header("Dashboard")
+
+    total_items = len(df)
+    total_stock = df["Available Stock"].sum()
+    total_value = df["Total Value"].sum()
+
+    st.metric("Total Items", total_items)
+    st.metric("Total Stock Units", total_stock)
+    st.metric("Total Stock Value", f"K{total_value:,.2f}")
+
+    low_stock = df[df["Available Stock"] <= df["Reorder Level"]]
+    st.subheader("Low Stock Items")
+    st.dataframe(low_stock)
+
+
+# ============================================================
+# MAIN APP
+# ============================================================
+def main():
+    st.title("Stock Management System")
+
+    df = load_stock()
+    sales_df = load_sales()
+
+    menu = [
+        "Dashboard", "Add Item", "Edit Item", "Delete Item",
+        "Receive Stock", "Issue Stock", "Reports"
+    ]
+    choice = st.sidebar.selectbox("Menu", menu)
+
+    if choice == "Dashboard":
+        dashboard_page(df)
+    elif choice == "Add Item":
+        add_item_page(df)
+    elif choice == "Edit Item":
+        edit_item_page(df)
+    elif choice == "Delete Item":
+        delete_item_page(df)
+    elif choice == "Receive Stock":
+        receive_stock_page(df)
+    elif choice == "Issue Stock":
+        issue_stock_page(df, sales_df)
+    elif choice == "Reports":
+        reports_page(df, sales_df)
+
+
+if __name__ == "__main__":
+    main()
