@@ -89,44 +89,39 @@ def log_activity(user, action, details=""):
 
 
 # ============================================================
-# IMPROVED NORMALIZER (AUTO-REPAIRS CSV)
+# UPDATED NORMALIZER (AUTO-DETECTS COST & SELLING PRICE)
 # ============================================================
 def normalize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # Clean column names
     df.columns = [col.strip() for col in df.columns]
 
-    # Mapping of possible wrong names → correct names
-    rename_map = {
-        "cost": "Cost Price",
-        "costprice": "Cost Price",
-        "buying price": "Cost Price",
-        "purchase price": "Cost Price",
-        "price": "Cost Price",
+    # Detect cost price
+    cost_aliases = [
+        "cost", "costprice", "cost_price", "unitcost", "unit_cost",
+        "buyingprice", "buying_price", "purchaseprice", "purchase_price",
+        "purchase", "buying", "cp", "price"
+    ]
 
-        "sellingprice": "Selling Price",
-        "sell price": "Selling Price",
-        "sale price": "Selling Price",
+    for col in df.columns:
+        col_clean = col.lower().replace(" ", "").replace("_", "")
+        if col_clean in cost_aliases:
+            df.rename(columns={col: "Cost Price"}, inplace=True)
+            break
 
-        "qty": "Available Stock",
-        "quantity": "Available Stock",
-        "stock": "Available Stock",
+    # Detect selling price
+    selling_aliases = [
+        "sellingprice", "selling_price", "sellprice", "sell_price",
+        "saleprice", "sale_price", "sp"
+    ]
 
-        "reorder": "Reorder Level",
-        "reorderlevel": "Reorder Level",
+    for col in df.columns:
+        col_clean = col.lower().replace(" ", "").replace("_", "")
+        if col_clean in selling_aliases:
+            df.rename(columns={col: "Selling Price"}, inplace=True)
+            break
 
-        "itemcode": "Item Code",
-        "item code": "Item Code",
-
-        "total": "Total Value",
-        "totalvalue": "Total Value",
-    }
-
-    # Apply renaming
-    df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns}, inplace=True)
-
-    # Ensure all required columns exist
+    # Ensure required columns
     for col in REQUIRED_STOCK_COLS:
         if col not in df.columns:
             if col in ["Available Stock", "Reorder Level", "Cost Price", "Selling Price", "Total Value"]:
@@ -134,21 +129,20 @@ def normalize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 df[col] = ""
 
-    # Convert numeric columns safely
+    # Convert numeric
     numeric_cols = ["Available Stock", "Reorder Level", "Cost Price", "Selling Price", "Total Value"]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    # Recalculate Total Value
+    # Recalculate totals
     df["Total Value"] = df["Available Stock"] * df["Cost Price"]
 
-    # Recalculate Stock Status
+    # Recalculate stock status
     df["Stock Status"] = df.apply(
         lambda r: "LOW" if r["Available Stock"] <= r["Reorder Level"] else "OK",
         axis=1
     )
 
-    # Default location if missing
     df["Location"] = df["Location"].replace("", "Shop")
 
     return df
@@ -307,8 +301,7 @@ def load_stock():
         df = pd.DataFrame(columns=REQUIRED_STOCK_COLS)
         return normalize_stock_df(df)
     df = pd.read_csv(STOCK_FILE)
-    df = normalize_stock_df(df)
-    return df
+    return normalize_stock_df(df)
 
 
 def save_stock(df):
@@ -323,10 +316,6 @@ def load_sales():
                 "Selling Price", "Total", "Customer", "Issued By"]
         return pd.DataFrame(columns=cols)
     df = pd.read_csv(SALES_FILE)
-    for col in ["Date", "Item Code", "Item", "Quantity Sold",
-                "Selling Price", "Total", "Customer", "Issued By"]:
-        if col not in df.columns:
-            df[col] = ""
     return df
 
 
@@ -354,19 +343,17 @@ def perform_undo():
     df_sales = st.session_state["undo_sales"].copy()
     save_stock(df_stock)
     save_sales(df_sales)
-    log_activity(st.session_state.get("username"), "Undo", "Reverted last change")
     del st.session_state["undo_stock"]
     del st.session_state["undo_sales"]
     return df_stock, df_sales
 
 
 # ============================================================
-# SEARCH + ITEM PICKER (FIXED)
+# FIXED ITEM PICKER (NO MORE KEYERROR)
 # ============================================================
 def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
     st.subheader(title)
 
-    # Normalize full DF
     df = normalize_stock_df(df)
 
     search = st.text_input("Search by Item Code, Name, or Brand")
@@ -388,7 +375,6 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
         st.warning("No matching items found.")
         return None, None
 
-    # Normalize filtered DF again to guarantee columns
     filtered = normalize_stock_df(filtered)
 
     display_series = filtered["Item"] + " | " + filtered["Item Code"].astype(str)
@@ -410,217 +396,7 @@ def pick_item_with_search(df, title="Select Item", allow_location_filter=True):
 """
     )
 
-    if BARCODE_AVAILABLE:
-        barcode_path = generate_barcode_image(row["Item Code"])
-        if barcode_path and os.path.exists(barcode_path):
-            st.image(barcode_path, caption=f"Barcode for {row['Item Code']}", width=200)
-
     return idx, row
-
-
-# ============================================================
-# ADD ITEM PAGE
-# ============================================================
-def add_item_page(df_stock, current_user):
-    st.header("➕ Add New Item")
-
-    category = st.text_input("Category")
-    item = st.text_input("Item Name")
-    brand = st.text_input("Brand")
-    supplier = st.text_input("Supplier")
-    location = st.selectbox("Location", LOCATIONS, index=2)
-
-    qty = st.number_input("Initial Stock", min_value=0, step=1)
-    reorder = st.number_input("Reorder Level", min_value=0, step=1)
-    cost_price = st.number_input("Cost Price", min_value=0.0, step=0.1)
-    selling_price = st.number_input("Selling Price", min_value=0.0, step=0.1)
-
-    if category:
-        auto_code = generate_item_code(df_stock, category)
-        st.text_input("Generated Item Code", value=auto_code, disabled=True)
-    else:
-        auto_code = ""
-
-    if st.button("Add Item"):
-        if not item or not category:
-            st.error("Category and Item Name are required.")
-            return
-
-        if not auto_code:
-            st.error("Item code could not be generated. Check category.")
-            return
-
-        push_undo_snapshot(df_stock, load_sales())
-
-        new_row = {
-            "Category": category,
-            "Item": item,
-            "Item Code": auto_code,
-            "Brand": brand,
-            "Available Stock": qty,
-            "Reorder Level": reorder,
-            "Cost Price": cost_price,
-            "Selling Price": selling_price,
-            "Total Value": qty * cost_price,
-            "Stock Status": "OK" if qty > reorder else "LOW",
-            "Location": location,
-            "Supplier": supplier,
-        }
-
-        df_stock.loc[len(df_stock)] = new_row
-        save_stock(df_stock)
-        log_activity(current_user, "Add Item", f"{item} ({auto_code})")
-        st.success("Item added successfully.")
-
-
-# ============================================================
-# EDIT ITEM PAGE
-# ============================================================
-def edit_item_page(df_stock, current_user):
-    st.header("✏️ Edit Item")
-
-    idx, row = pick_item_with_search(df_stock, "Search Item to Edit")
-    if row is None:
-        return
-
-    category = st.text_input("Category", value=row["Category"])
-    item = st.text_input("Item Name", value=row["Item"])
-    brand = st.text_input("Brand", value=row["Brand"])
-    supplier = st.text_input("Supplier", value=row["Supplier"])
-
-    location = st.selectbox(
-        "Location",
-        LOCATIONS,
-        index=LOCATIONS.index(row["Location"]) if row["Location"] in LOCATIONS else 2
-    )
-
-    qty = st.number_input("Available Stock", min_value=0, step=1, value=int(row["Available Stock"]))
-    reorder = st.number_input("Reorder Level", min_value=0, step=1, value=int(row["Reorder Level"]))
-    cost_price = st.number_input("Cost Price", min_value=0.0, step=0.1, value=float(row["Cost Price"]))
-    selling_price = st.number_input("Selling Price", min_value=0.0, step=0.1, value=float(row["Selling Price"]))
-
-    if st.button("Save Changes"):
-        push_undo_snapshot(df_stock, load_sales())
-
-        df_stock.at[idx, "Category"] = category
-        df_stock.at[idx, "Item"] = item
-        df_stock.at[idx, "Brand"] = brand
-        df_stock.at[idx, "Supplier"] = supplier
-        df_stock.at[idx, "Location"] = location
-        df_stock.at[idx, "Available Stock"] = qty
-        df_stock.at[idx, "Reorder Level"] = reorder
-        df_stock.at[idx, "Cost Price"] = cost_price
-        df_stock.at[idx, "Selling Price"] = selling_price
-        df_stock.at[idx, "Total Value"] = qty * cost_price
-        df_stock.at[idx, "Stock Status"] = "OK" if qty > reorder else "LOW"
-
-        save_stock(df_stock)
-        log_activity(current_user, "Edit Item", f"{item} ({row['Item Code']})")
-        st.success("Item updated successfully.")
-
-
-# ============================================================
-# DELETE ITEM PAGE
-# ============================================================
-def delete_item_page(df_stock, current_user):
-    st.header("🗑️ Delete Item")
-
-    idx, row = pick_item_with_search(df_stock, "Search Item to Delete")
-    if row is None:
-        return
-
-    st.warning(f"Are you sure you want to delete: {row['Item']} ({row['Item Code']})?")
-    if st.button("Confirm Delete"):
-        push_undo_snapshot(df_stock, load_sales())
-        df_stock.drop(idx, inplace=True)
-        df_stock.reset_index(drop=True, inplace=True)
-        save_stock(df_stock)
-        log_activity(current_user, "Delete Item", f"{row['Item']} ({row['Item Code']})")
-        st.success("Item deleted successfully.")
-
-
-# ============================================================
-# RECEIVE STOCK PAGE
-# ============================================================
-def receive_stock_page(df_stock, current_user):
-    st.header("📥 Receive Stock")
-
-    idx, row = pick_item_with_search(df_stock, "Search Item to Receive")
-    if row is None:
-        return
-
-    qty = st.number_input("Quantity Received", min_value=1, step=1)
-
-    if st.button("Receive"):
-        push_undo_snapshot(df_stock, load_sales())
-
-        new_qty = int(row["Available Stock"]) + qty
-        df_stock.at[idx, "Available Stock"] = new_qty
-        df_stock.at[idx, "Total Value"] = new_qty * float(row["Cost Price"])
-        df_stock.at[idx, "Stock Status"] = "OK" if new_qty > int(row["Reorder Level"]) else "LOW"
-
-        save_stock(df_stock)
-        log_activity(current_user, "Receive Stock", f"{qty} of {row['Item']} ({row['Item Code']})")
-        st.success("Stock received successfully.")
-
-
-# ============================================================
-# TRANSFER STOCK PAGE
-# ============================================================
-def transfer_stock_page(df_stock, current_user):
-    st.header("🔁 Transfer Stock Between Locations")
-
-    idx, row = pick_item_with_search(df_stock, "Select Item to Transfer", allow_location_filter=False)
-    if row is None:
-        return
-
-    from_location = st.selectbox("From Location", LOCATIONS)
-    to_location = st.selectbox("To Location", [loc for loc in LOCATIONS if loc != from_location])
-    qty = st.number_input("Quantity to Transfer", min_value=1, step=1)
-
-    if st.button("Transfer"):
-        same_item = df_stock[df_stock["Item Code"] == row["Item Code"]]
-
-        from_mask = (same_item["Location"] == from_location)
-        to_mask = (same_item["Location"] == to_location)
-
-        if not from_mask.any():
-            st.error("No stock found at the selected 'From' location.")
-            return
-
-        from_idx = same_item[from_mask].index[0]
-        from_row = df_stock.loc[from_idx]
-
-        if qty > int(from_row["Available Stock"]):
-            st.error("Not enough stock at the 'From' location.")
-            return
-
-        push_undo_snapshot(df_stock, load_sales())
-
-        new_from_qty = int(from_row["Available Stock"]) - qty
-        df_stock.at[from_idx, "Available Stock"] = new_from_qty
-        df_stock.at[from_idx, "Total Value"] = new_from_qty * float(from_row["Cost Price"])
-        df_stock.at[from_idx, "Stock Status"] = "OK" if new_from_qty > int(from_row["Reorder Level"]) else "LOW"
-
-        if to_mask.any():
-            to_idx = same_item[to_mask].index[0]
-            to_row = df_stock.loc[to_idx]
-            new_to_qty = int(to_row["Available Stock"]) + qty
-            df_stock.at[to_idx, "Available Stock"] = new_to_qty
-            df_stock.at[to_idx, "Total Value"] = new_to_qty * float(to_row["Cost Price"])
-            df_stock.at[to_idx, "Stock Status"] = "OK" if new_to_qty > int(to_row["Reorder Level"]) else "LOW"
-        else:
-            new_row = from_row.copy()
-            new_row["Location"] = to_location
-            new_row["Available Stock"] = qty
-            new_row["Total Value"] = qty * float(from_row["Cost Price"])
-            new_row["Stock Status"] = "OK" if qty > int(from_row["Reorder Level"]) else "LOW"
-            df_stock.loc[len(df_stock)] = new_row
-
-        save_stock(df_stock)
-        log_activity(current_user, "Transfer Stock",
-                     f"{qty} of {row['Item']} ({row['Item Code']}) from {from_location} to {to_location}")
-        st.success("Stock transferred successfully.")
 
 # ============================================================
 # DELIVERY NOTE (TEXT)
@@ -636,8 +412,8 @@ def generate_issue_text_report(sale):
         f"ITEM: {sale['Item']}",
         f"ITEM CODE: {sale['Item Code']}",
         f"QUANTITY: {sale['Quantity Sold']}",
-        f"SELLING PRICE: {sale['Selling Price']}",
-        f"TOTAL: {sale['Total']}",
+        f"SELLING PRICE: ${sale['Selling Price']}",
+        f"TOTAL: ${sale['Total']}",
         "----------------------------------------",
         "SIGNATURE (ISSUED BY): ________________",
         "SIGNATURE (CUSTOMER): ________________",
@@ -671,8 +447,8 @@ def generate_issue_pdf_report(sale):
         ("ITEM", sale["Item"]),
         ("ITEM CODE", sale["Item Code"]),
         ("QUANTITY", sale["Quantity Sold"]),
-        ("SELLING PRICE", sale["Selling Price"]),
-        ("TOTAL", sale["Total"]),
+        ("SELLING PRICE", f"${sale['Selling Price']}"),
+        ("TOTAL", f"${sale['Total']}"),
     ]
 
     for label, value in fields:
@@ -819,7 +595,7 @@ def stock_summary_report(df_stock):
     st.dataframe(df_stock)
 
     total_value = df_stock["Total Value"].sum()
-    st.info(f"**Total Stock Value:** ZMW {total_value:,.2f}")
+    st.info(f"**Total Stock Value:** ${total_value:,.2f}")
 
 
 # ============================================================
@@ -835,7 +611,7 @@ def sales_report(df_sales):
     st.dataframe(df_sales)
 
     total_sales = df_sales["Total"].astype(float).sum()
-    st.success(f"**Total Sales:** ZMW {total_sales:,.2f}")
+    st.success(f"**Total Sales:** ${total_sales:,.2f}")
 
 
 # ============================================================
@@ -966,7 +742,6 @@ def main():
     user = st.session_state["username"]
     role = st.session_state["role"]
 
-    # ---------------- Dashboard ----------------
     if menu == "Dashboard":
         st.header("📊 Dashboard Overview")
 
@@ -989,7 +764,6 @@ def main():
         else:
             st.dataframe(df_sales.tail(10))
 
-    # ---------------- Stock Management ----------------
     elif menu == "Add Item":
         add_item_page(df_stock, user)
 
@@ -1005,11 +779,9 @@ def main():
     elif menu == "Transfer Stock":
         transfer_stock_page(df_stock, user)
 
-    # ---------------- Issue Stock ----------------
     elif menu == "Issue Stock":
         issue_stock_page(df_stock, df_sales, user)
 
-    # ---------------- Reports ----------------
     elif menu == "Low Stock Report":
         low_stock_report(df_stock)
 
@@ -1019,29 +791,24 @@ def main():
     elif menu == "Sales Report":
         sales_report(df_sales)
 
-    # ---------------- Import / Export ----------------
     elif menu == "Import Stock":
         import_stock(df_stock, user)
 
     elif menu == "Export Stock":
         export_stock(df_stock)
 
-    # ---------------- Backup / Restore ----------------
     elif menu == "Backup System":
         backup_system()
 
     elif menu == "Restore System":
         restore_system()
 
-    # ---------------- Activity Log ----------------
     elif menu == "Activity Log":
         activity_log_page()
 
-    # ---------------- User Management ----------------
     elif menu == "User Management":
         user_management_page(user, role)
 
-    # ---------------- Undo ----------------
     elif menu == "Undo Last Action":
         if can_undo():
             df_stock, df_sales = perform_undo()
@@ -1049,7 +816,6 @@ def main():
         else:
             st.info("Nothing to undo.")
 
-    # ---------------- Logout ----------------
     elif menu == "Logout":
         st.session_state.clear()
         st.rerun()
