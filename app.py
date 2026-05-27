@@ -96,7 +96,7 @@ def login_block():
             st.session_state["username"] = username
             st.session_state["role"] = get_user_role(username)
             log_activity(username, "Login", "User logged in")
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Invalid username or password")
 
@@ -386,111 +386,239 @@ def delete_item_page(df_stock, current_user):
         log_activity(current_user, "Delete Item", f"{row['Item']} ({row['Item Code']})")
         st.success("Item deleted successfully.")
 
+# ============================================================
+# RECEIVE STOCK PAGE
+# ============================================================
+def receive_stock_page(df_stock, current_user):
+    st.header("Receive Stock")
+
+    idx, row = pick_item_with_search(df_stock, "Search Item to Receive")
+    if row is None:
+        return
+
+    qty = st.number_input("Quantity Received", min_value=1, step=1)
+
+    if st.button("Receive"):
+        push_undo_snapshot(df_stock, load_sales())
+        df_stock.at[idx, "Available Stock"] = int(row["Available Stock"]) + qty
+        df_stock.at[idx, "Total Value"] = df_stock.at[idx, "Available Stock"] * float(row["Price"])
+        save_stock(df_stock)
+        log_activity(current_user, "Receive Stock", f"{qty} of {row['Item']} ({row['Item Code']})")
+        st.success("Stock received successfully.")
+
 
 # ============================================================
-# ADD ITEM PAGE
+# ISSUE STOCK PAGE
 # ============================================================
-def add_item_page(df_stock, current_user):
-    st.header("Add New Item")
+def issue_stock_page(df_stock, df_sales, current_user):
+    st.header("Issue Stock")
 
-    category = st.text_input("Category")
-    item = st.text_input("Item Name")
-    item_code = st.text_input("Item Code")
-    brand = st.text_input("Brand")
-    supplier = st.text_input("Supplier")
-    location = st.selectbox("Location", LOCATIONS, index=2)
+    idx, row = pick_item_with_search(df_stock, "Search Item to Issue")
+    if row is None:
+        return
 
-    qty = st.number_input("Initial Stock", min_value=0, step=1)
-    reorder = st.number_input("Reorder Level", min_value=0, step=1)
-    price = st.number_input("Unit Price", min_value=0.0, step=0.1)
+    qty = st.number_input("Quantity to Issue", min_value=1, step=1)
+    customer = st.text_input("Customer Name (optional)")
 
-    if st.button("Add Item"):
-        if not item or not item_code:
-            st.error("Item name and Item Code are required.")
+    if st.button("Issue"):
+        if qty > int(row["Available Stock"]):
+            st.error("Not enough stock available.")
             return
 
-        new_row = {
-            "Category": category,
-            "Item": item,
-            "Item Code": item_code,
-            "Brand": brand,
-            "Available Stock": qty,
-            "Reorder Level": reorder,
-            "Price": price,
-            "Total Value": qty * price,
-            "Stock Status": "OK",
-            "Location": location,
-            "Supplier": supplier,
+        push_undo_snapshot(df_stock, df_sales)
+
+        df_stock.at[idx, "Available Stock"] = int(row["Available Stock"]) - qty
+        df_stock.at[idx, "Total Value"] = df_stock.at[idx, "Available Stock"] * float(row["Price"])
+
+        sale = {
+            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Item Code": row["Item Code"],
+            "Item": row["Item"],
+            "Quantity Sold": qty,
+            "Price": row["Price"],
+            "Total": qty * float(row["Price"]),
+            "Customer": customer,
         }
-        push_undo_snapshot(df_stock, load_sales())
-        df_stock.loc[len(df_stock)] = new_row
+        df_sales.loc[len(df_sales)] = sale
+
         save_stock(df_stock)
-        log_activity(current_user, "Add Item", f"{item} ({item_code})")
-        st.success("Item added successfully.")
+        save_sales(df_sales)
+        log_activity(current_user, "Issue Stock", f"{qty} of {row['Item']} ({row['Item Code']})")
+        st.success("Stock issued successfully.")
 
 
 # ============================================================
-# EDIT ITEM PAGE
+# REPORTS PAGE
 # ============================================================
-def edit_item_page(df_stock, current_user):
-    st.header("Edit Item")
+def reports_page(df_stock, df_sales):
+    st.header("Reports")
 
-    idx, row = pick_item_with_search(df_stock, "Search Item to Edit")
-    if row is None:
-        return
+    st.subheader("Stock Summary")
+    cols = ["Location", "Supplier", "Item", "Available Stock", "Total Value", "Stock Status"]
+    cols = [c for c in cols if c in df_stock.columns]
+    st.dataframe(df_stock[cols])
 
-    category = st.text_input("Category", value=row["Category"])
-    item = st.text_input("Item Name", value=row["Item"])
-    item_code = st.text_input("Item Code", value=row["Item Code"])
-    brand = st.text_input("Brand", value=row["Brand"])
-    supplier = st.text_input("Supplier", value=row["Supplier"])
+    st.subheader("Low Stock Items")
+    low_stock = df_stock[df_stock["Available Stock"] <= df_stock["Reorder Level"]]
+    st.dataframe(low_stock)
 
-    location = st.selectbox(
-        "Location",
-        LOCATIONS,
-        index=LOCATIONS.index(row["Location"]) if row["Location"] in LOCATIONS else 2
+    st.subheader("Sales Summary")
+    st.dataframe(df_sales)
+
+    st.subheader("Sales by Item")
+    if not df_sales.empty:
+        sales_group = df_sales.groupby("Item")[["Quantity Sold", "Total"]].sum().reset_index()
+        st.dataframe(sales_group)
+
+
+# ============================================================
+# IMPORT / EXPORT PAGE
+# ============================================================
+def import_export_page(df_stock, current_user):
+    st.header("Import / Export Stock Data")
+
+    st.subheader("Export Current Stock")
+    csv_data = df_stock.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Download Stock CSV",
+        data=csv_data,
+        file_name="stock_export_backup.csv",
+        mime="text/csv",
     )
 
-    qty = st.number_input("Available Stock", min_value=0, step=1, value=int(row["Available Stock"]))
-    reorder = st.number_input("Reorder Level", min_value=0, step=1, value=int(row["Reorder Level"]))
-    price = st.number_input("Unit Price", min_value=0.0, step=0.1, value=float(row["Price"]))
+    st.subheader("Import Stock CSV (replace current)")
+    uploaded = st.file_uploader("Upload CSV file", type=["csv"])
+    if uploaded is not None:
+        new_df = pd.read_csv(uploaded)
+        # normalize columns
+        rename_map = {
+            "CATEGORY": "Category",
+            "Item": "Item",
+            "ITEM CODE": "Item Code",
+            "Item Code": "Item Code",
+            "BRAND": "Brand",
+            "AVAILABLE STOCK": "Available Stock",
+            "Available Stock": "Available Stock",
+            "REORDER LEVEL": "Reorder Level",
+            "Reorder Level": "Reorder Level",
+            "Unit Price": "Price",
+            "Price": "Price",
+            "Total Value": "Total Value",
+            "STOCK STATUS": "Stock Status",
+            "Stock Status": "Stock Status",
+        }
+        new_df.rename(columns=rename_map, inplace=True)
 
-    if st.button("Save Changes"):
-        push_undo_snapshot(df_stock, load_sales())
-        df_stock.at[idx, "Category"] = category
-        df_stock.at[idx, "Item"] = item
-        df_stock.at[idx, "Item Code"] = item_code
-        df_stock.at[idx, "Brand"] = brand
-        df_stock.at[idx, "Supplier"] = supplier
-        df_stock.at[idx, "Location"] = location
-        df_stock.at[idx, "Available Stock"] = qty
-        df_stock.at[idx, "Reorder Level"] = reorder
-        df_stock.at[idx, "Price"] = price
-        df_stock.at[idx, "Total Value"] = qty * price
+        required_cols = [
+            "Category", "Item", "Item Code", "Brand",
+            "Available Stock", "Reorder Level",
+            "Price", "Total Value", "Stock Status",
+            "Location", "Supplier"
+        ]
+        for col in required_cols:
+            if col not in new_df.columns:
+                if col in ["Available Stock", "Reorder Level", "Price", "Total Value"]:
+                    new_df[col] = 0
+                else:
+                    new_df[col] = ""
 
-        save_stock(df_stock)
-        log_activity(current_user, "Edit Item", f"{item} ({item_code})")
-        st.success("Item updated successfully.")
+        new_df["Location"] = new_df["Location"].replace("", "Shop")
+        new_df["Total Value"] = new_df["Available Stock"].astype(float) * new_df["Price"].astype(float)
+
+        if st.button("Confirm Import (Overwrite Stock)"):
+            push_undo_snapshot(df_stock, load_sales())
+            save_stock(new_df)
+            log_activity(current_user, "Import Stock CSV", "Stock data replaced from CSV")
+            st.success("Stock data imported and replaced successfully. Please refresh the app.")
 
 
 # ============================================================
-# DELETE ITEM PAGE
+# BACKUP / RESTORE PAGE
 # ============================================================
-def delete_item_page(df_stock, current_user):
-    st.header("Delete Item")
+def backup_restore_page(current_user):
+    st.header("Backup & Restore")
 
-    idx, row = pick_item_with_search(df_stock, "Search Item to Delete")
-    if row is None:
+    st.subheader("Create Backup")
+    if st.button("Create Backup Now"):
+        path = create_backup()
+        log_activity(current_user, "Create Backup", path)
+        st.success(f"Backup created at: {path}")
+
+    st.subheader("Restore Backup")
+    backups = list_backups()
+    if backups:
+        choice = st.selectbox("Select Backup Folder", backups)
+        if st.button("Restore Selected Backup"):
+            ok = restore_backup(choice)
+            if ok:
+                log_activity(current_user, "Restore Backup", choice)
+                st.success("Backup restored. Please refresh the app.")
+            else:
+                st.error("Failed to restore backup.")
+    else:
+        st.info("No backups found.")
+
+
+# ============================================================
+# ACTIVITY LOG PAGE
+# ============================================================
+def activity_log_page():
+    st.header("Activity Log")
+
+    if not os.path.exists(ACTIVITY_LOG_FILE):
+        st.info("No activity logged yet.")
         return
 
-    st.warning(f"Are you sure you want to delete: {row['Item']} ({row['Item Code']})?")
-    if st.button("Confirm Delete"):
-        push_undo_snapshot(df_stock, load_sales())
-        df_stock.drop(idx, inplace=True)
-        df_stock.reset_index(drop=True, inplace=True)
-        save_stock(df_stock)
-        log_activity(current_user, "Delete Item", f"{row['Item']} ({row['Item Code']})")
-        st.success("Item deleted successfully.")
+    df_log = pd.read_csv(ACTIVITY_LOG_FILE)
+    st.dataframe(df_log)
+
+
+# ============================================================
+# USER MANAGEMENT PAGE (ADMIN ONLY)
+# ============================================================
+def user_management_page(current_user, current_role):
+    st.header("User Management")
+
+    if current_role != "admin":
+        st.error("Only admin users can manage accounts.")
+        return
+
+    users = load_users()
+    st.subheader("Existing Users")
+    st.write(list(users.keys()))
+
+    st.subheader("Add New User")
+    new_username = st.text_input("New Username")
+    new_password = st.text_input("New Password", type="password")
+    new_role = st.selectbox("Role", ["admin", "user"])
+
+    if st.button("Create User"):
+        if not new_username or not new_password:
+            st.error("Username and password are required.")
+        elif new_username in users:
+            st.error("User already exists.")
+        else:
+            users[new_username] = {
+                "password": hash_password(new_password),
+                "role": new_role,
+            }
+            save_users(users)
+            log_activity(current_user, "Create User", new_username)
+            st.success("User created successfully.")
+
+    st.subheader("Reset User Password")
+    reset_user = st.selectbox("Select User", list(users.keys()))
+    reset_pass = st.text_input("New Password for Selected User", type="password")
+
+    if st.button("Reset Password"):
+        if not reset_pass:
+            st.error("New password is required.")
+        else:
+            users[reset_user]["password"] = hash_password(reset_pass)
+            save_users(users)
+            log_activity(current_user, "Reset Password", reset_user)
+            st.success("Password reset successfully.")
+
 # ============================================================
 # DASHBOARD PAGE
 # ============================================================
@@ -523,7 +651,7 @@ def main():
     if st.sidebar.button("Logout"):
         log_activity(current_user, "Logout", "User logged out")
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
     df_stock = load_stock()
     df_sales = load_sales()
@@ -546,7 +674,7 @@ def main():
     if can_undo():
         if st.sidebar.button("Undo Last Change"):
             df_stock, df_sales = perform_undo()
-            st.experimental_rerun()
+            st.rerun()
 
     if choice == "Dashboard":
         dashboard_page(df_stock, df_sales)
