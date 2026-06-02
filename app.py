@@ -73,14 +73,20 @@ def log_activity(user, action, details=""):
         "Action": action,
         "Details": details,
     }
+
     if os.path.exists(ACTIVITY_LOG_FILE):
         df = pd.read_csv(ACTIVITY_LOG_FILE)
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     else:
         df = pd.DataFrame([row])
+
     df.to_csv(ACTIVITY_LOG_FILE, index=False)
 
-
+    # Auto-backup
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
+    ensure_dir(backup_folder)
+    shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv")
 # ============================================================
 # UPDATED NORMALIZER (AUTO-DETECTS COST & SELLING PRICE)
 # ============================================================
