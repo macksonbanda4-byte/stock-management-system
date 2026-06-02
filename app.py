@@ -73,20 +73,14 @@ def log_activity(user, action, details=""):
         "Action": action,
         "Details": details,
     }
-
     if os.path.exists(ACTIVITY_LOG_FILE):
         df = pd.read_csv(ACTIVITY_LOG_FILE)
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     else:
         df = pd.DataFrame([row])
-
     df.to_csv(ACTIVITY_LOG_FILE, index=False)
 
-    # Auto-backup
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
-    shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv")
+
 # ============================================================
 # UPDATED NORMALIZER (AUTO-DETECTS COST & SELLING PRICE)
 # ============================================================
@@ -210,31 +204,53 @@ def log_activity(user, action, details=""):
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
     ensure_dir(backup_folder)
     shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv")
+
 # ============================================================
 # USER MANAGEMENT PAGE (ADMIN ONLY)
 # ============================================================
-def log_activity(user, action, details=""):
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = {
-        "Timestamp": now,
-        "User": user or "Unknown",
-        "Action": action,
-        "Details": details,
-    }
+def user_management_page(current_user, current_role):
+    st.header("👤 User Management")
 
-    if os.path.exists(ACTIVITY_LOG_FILE):
-        df = pd.read_csv(ACTIVITY_LOG_FILE)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    else:
-        df = pd.DataFrame([row])
+    if current_role != "admin":
+        st.error("Only admin users can manage accounts.")
+        return
 
-    df.to_csv(ACTIVITY_LOG_FILE, index=False)
+    users = load_users()
+    st.subheader("Existing Users")
+    st.write(list(users.keys()))
 
-    # Auto-backup
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
-    shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv")
+    st.subheader("Add New User")
+    new_username = st.text_input("New Username")
+    new_password = st.text_input("New Password", type="password")
+    new_role = st.selectbox("Role", ["admin", "user"])
+
+    if st.button("Create User"):
+        if not new_username or not new_password:
+            st.error("Username and password are required.")
+        elif new_username in users:
+            st.error("User already exists.")
+        else:
+            users[new_username] = {
+                "password": hash_password(new_password),
+                "role": new_role,
+            }
+            save_users(users)
+            log_activity(current_user, "Create User", new_username)
+            st.success("User created successfully.")
+
+    st.subheader("Reset User Password")
+    reset_user = st.selectbox("Select User", list(users.keys()))
+    reset_pass = st.text_input("New Password for Selected User", type="password")
+
+    if st.button("Reset Password"):
+        if not reset_pass:
+            st.error("New password is required.")
+        else:
+            users[reset_user]["password"] = hash_password(reset_pass)
+            save_users(users)
+            log_activity(current_user, "Reset Password", reset_user)
+            st.success("Password reset successfully.")
+
 # ============================================================
 # LOAD & SAVE STOCK / SALES
 # ============================================================
@@ -289,7 +305,6 @@ def save_sales(df):
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
     ensure_dir(backup_folder)
     shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
-
 # ============================================================
 # UNDO SUPPORT
 # ============================================================
@@ -965,8 +980,5 @@ def main():
 # ============================================================
 # RUN APP
 # ============================================================
-# ============================================================
-# MAIN ENTRY POINT
-# ============================================================
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
