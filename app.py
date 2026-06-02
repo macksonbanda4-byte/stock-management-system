@@ -182,28 +182,62 @@ def generate_item_code(df_stock: pd.DataFrame, category: str) -> str:
 # ============================================================
 # USER MANAGEMENT (LOCAL JSON)
 # ============================================================
-def log_activity(user, action, details=""):
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = {
-        "Timestamp": now,
-        "User": user or "Unknown",
-        "Action": action,
-        "Details": details,
-    }
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        default = {
+            "admin": {
+                "password": hash_password("admin123"),
+                "role": "admin",
+            }
+        }
+        with open(USERS_FILE, "w") as f:
+            json.dump(default, f, indent=4)
+        return default
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
 
-    if os.path.exists(ACTIVITY_LOG_FILE):
-        df = pd.read_csv(ACTIVITY_LOG_FILE)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    else:
-        df = pd.DataFrame([row])
 
-    df.to_csv(ACTIVITY_LOG_FILE, index=False)
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=4)
 
-    # Auto-backup
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
-    shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv")
+
+def authenticate(username, password):
+    users = load_users()
+    if username in users:
+        return users[username]["password"] == hash_password(password)
+    return False
+
+
+def get_user_role(username):
+    users = load_users()
+    if username in users:
+        return users[username].get("role", "user")
+    return "user"
+
+
+def login_block():
+    st.title("Stock Management System - Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if authenticate(username, password):
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = username
+            st.session_state["role"] = get_user_role(username)
+            log_activity(username, "Login", "User logged in")
+            st.rerun()
+        else:
+            st.error("Invalid username or password")
+
+
+def require_login():
+    if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+        login_block()
+        st.stop()
+
 
 # ============================================================
 # USER MANAGEMENT PAGE (ADMIN ONLY)
@@ -980,8 +1014,5 @@ def main():
 # ============================================================
 # RUN APP
 # ============================================================
-# ============================================================
-# MAIN ENTRY POINT
-# ============================================================
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
