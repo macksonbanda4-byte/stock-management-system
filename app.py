@@ -234,7 +234,7 @@ def log_activity(user, action, details=""):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
     ensure_dir(backup_folder)
-    shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv"
+    shutil.copy(ACTIVITY_LOG_FILE, f"{backup_folder}/activity_log.csv")
 # ============================================================
 # LOAD & SAVE STOCK / SALES
 # ============================================================
