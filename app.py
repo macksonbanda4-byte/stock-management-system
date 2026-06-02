@@ -286,43 +286,25 @@ def user_management_page(current_user, current_role):
             st.success("Password reset successfully.")
 
 # ============================================================
-# LOAD & SAVE STOCK / SALES (UPDATED WITH AUTO-BACKUP/RESTORE)
+# LOAD & SAVE STOCK / SALES
 # ============================================================
 @st.cache_data
 def load_stock():
-    # If main stock file is missing or empty, try restoring from latest backup
-    if not os.path.exists(STOCK_FILE) or os.path.getsize(STOCK_FILE) == 0:
-        backups = [d for d in os.listdir(BACKUP_DIR) if d.startswith("backup_")]
-        if backups:
-            latest = sorted(backups)[-1]
-            src = f"{BACKUP_DIR}/{latest}/stock_export.csv"
-            if os.path.exists(src):
-                shutil.copy(src, STOCK_FILE)
-                st.warning("⚠️ Stock file was missing/empty. Restored from latest backup.")
-        else:
-            # No backup found → start fresh
-            df = pd.DataFrame(columns=REQUIRED_STOCK_COLS)
-            return normalize_stock_df(df)
-
+    if not os.path.exists(STOCK_FILE):
+        df = pd.DataFrame(columns=REQUIRED_STOCK_COLS)
+        return normalize_stock_df(df)
     df = pd.read_csv(STOCK_FILE)
     return normalize_stock_df(df)
 
 
 def save_stock(df):
-    # Save main file
     df.to_csv(STOCK_FILE, index=False)
     load_stock.clear()
-
-    # Auto-backup with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
-    shutil.copy(STOCK_FILE, f"{backup_folder}/stock_export.csv")
 
 
 @st.cache_data
 def load_sales():
-    if not os.path.exists(SALES_FILE) or os.path.getsize(SALES_FILE) == 0:
+    if not os.path.exists(SALES_FILE):
         cols = ["Date", "Item Code", "Item", "Quantity Sold",
                 "Selling Price", "Total", "Customer", "Issued By"]
         return pd.DataFrame(columns=cols)
@@ -334,17 +316,6 @@ def save_sales(df):
     df.to_csv(SALES_FILE, index=False)
     load_sales.clear()
 
-    # Auto-backup sales too
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
-    shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
-
-# ============================================================
-# MAIN ENTRY POINT
-# ============================================================
-if __name__ == "__main__":
-    main()
 
 # ============================================================
 # UNDO SUPPORT
@@ -1020,6 +991,9 @@ def main():
 
 # ============================================================
 # RUN APP
+# ============================================================
+# ============================================================
+# MAIN ENTRY POINT
 # ============================================================
 if __name__ == "__main__":
     main()
