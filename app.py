@@ -288,25 +288,30 @@ def user_management_page(current_user, current_role):
 # ============================================================
 # LOAD & SAVE STOCK / SALES
 # ============================================================
-@st.cache_data
 def load_stock():
-    # If main stock file is missing or empty, try restoring from latest backup
-    if not os.path.exists(STOCK_FILE) or os.path.getsize(STOCK_FILE) == 0:
-        backups = [d for d in os.listdir(BACKUP_DIR) if d.startswith("backup_")]
-        if backups:
-            latest = sorted(backups)[-1]
-            src = f"{BACKUP_DIR}/{latest}/stock_export.csv"
-            if os.path.exists(src):
-                shutil.copy(src, STOCK_FILE)
-                st.warning("⚠️ Stock file was missing/empty. Restored from latest backup.")
-        else:
-            # No backup found → start fresh
-            df = pd.DataFrame(columns=REQUIRED_STOCK_COLS)
+    conn = sqlite3.connect("stock_data.db")
+    try:
+        df = pd.read_sql("SELECT * FROM stock", conn)
+        conn.close()
+        return normalize_stock_df(df)
+    except Exception:
+        conn.close()
+        # If DB fails, try restoring from CSV
+        if os.path.exists(STOCK_FILE) and os.path.getsize(STOCK_FILE) > 0:
+            df = pd.read_csv(STOCK_FILE)
             return normalize_stock_df(df)
-
-    df = pd.read_csv(STOCK_FILE)
-    return normalize_stock_df(df)
-
+        else:
+            # If CSV missing, restore from latest backup
+            backups = [d for d in os.listdir(BACKUP_DIR) if d.startswith("backup_")]
+            if backups:
+                latest = sorted(backups)[-1]
+                src = f"{BACKUP_DIR}/{latest}/stock_export.csv"
+                if os.path.exists(src):
+                    shutil.copy(src, STOCK_FILE)
+                    df = pd.read_csv(STOCK_FILE)
+                    return normalize_stock_df(df)
+            # If nothing found, start fresh
+            return normalize_stock_df(pd.DataFrame(columns=REQUIRED_STOCK_COLS))
 
 def save_stock(df):
     # Save main file
