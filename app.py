@@ -7,6 +7,7 @@ import json
 import shutil
 from pathlib import Path
 from io import BytesIO
+import sqlite3
 
 # Optional extras: BARCODE ONLY (no PDF)
 try:
@@ -15,7 +16,6 @@ try:
     BARCODE_AVAILABLE = True
 except ImportError:
     BARCODE_AVAILABLE = False
-
 
 # ============================================================
 # FILE PATHS & CONSTANTS
