@@ -16,6 +16,24 @@ try:
     BARCODE_AVAILABLE = True
 except ImportError:
     BARCODE_AVAILABLE = False
+    import subprocess
+
+def auto_commit_push(timestamp: str):
+    """Stage, commit, and push all key files to GitHub."""
+    try:
+        subprocess.run([
+            "git", "add",
+            "stock_data.db",
+            "stock_export.csv",
+            "sales.csv",
+            "users.json",
+            "activity_log.csv",
+            "backups"
+        ], check=True)
+        subprocess.run(["git", "commit", "-m", f"Auto backup at {timestamp}"], check=True)
+        subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print("Git commit/push failed:", e)
 
 # ============================================================
 # FILE PATHS & CONSTANTS
