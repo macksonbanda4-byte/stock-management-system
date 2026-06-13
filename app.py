@@ -56,6 +56,32 @@ ensure_all_folders()
 
 
 # ============================================================
+# INITIALIZE DATABASE TABLES
+# ============================================================
+def initialize_database():
+    conn = sqlite3.connect("stock_data.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS stock (
+        Category TEXT, Item TEXT, ItemCode TEXT, Brand TEXT,
+        AvailableStock INTEGER, ReorderLevel INTEGER,
+        CostPrice REAL, SellingPrice REAL,
+        TotalValue REAL, StockStatus TEXT,
+        Location TEXT, Supplier TEXT
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sales (
+        Date TEXT, ItemCode TEXT, Item TEXT,
+        QuantitySold INTEGER, SellingPrice REAL,
+        Total REAL, Customer TEXT, IssuedBy TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+initialize_database()
+# ============================================================
 # PASSWORD HASHING
 # ============================================================
 def hash_password(password: str) -> str:
