@@ -353,6 +353,7 @@ def load_sales():
         cols = ["Date", "Item Code", "Item", "Quantity Sold",
                 "Selling Price", "Total", "Customer", "Issued By"]
         return pd.DataFrame(columns=cols)
+import subprocess
 
 def save_sales(df):
     conn = sqlite3.connect("stock_data.db")
@@ -365,13 +366,23 @@ def save_sales(df):
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
     os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
-     # ✅ Auto commit and push changes to GitHub
+
+    # ✅ Auto commit and push ALL key files
     try:
-        subprocess.run(["git", "add", "stock_data.db", STOCK_FILE, BACKUP_DIR], check=True)
+        subprocess.run([
+            "git", "add",
+            "stock_data.db",
+            STOCK_FILE,
+            SALES_FILE,
+            USERS_FILE,
+            ACTIVITY_LOG_FILE,
+            BACKUP_DIR
+        ], check=True)
         subprocess.run(["git", "commit", "-m", f"Auto backup at {timestamp}"], check=True)
         subprocess.run(["git", "push"], check=True)
     except Exception as e:
         print("Git commit/push failed:", e)
+
 # ============================================================
 # UNDO SUPPORT
 # ============================================================
