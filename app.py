@@ -296,53 +296,48 @@ def load_stock():
         return normalize_stock_df(df)
     except Exception:
         conn.close()
-        # If DB fails, try restoring from CSV
         if os.path.exists(STOCK_FILE) and os.path.getsize(STOCK_FILE) > 0:
             df = pd.read_csv(STOCK_FILE)
             return normalize_stock_df(df)
-        else:
-            # If CSV missing, restore from latest backup
-            backups = [d for d in os.listdir(BACKUP_DIR) if d.startswith("backup_")]
-            if backups:
-                latest = sorted(backups)[-1]
-                src = f"{BACKUP_DIR}/{latest}/stock_export.csv"
-                if os.path.exists(src):
-                    shutil.copy(src, STOCK_FILE)
-                    df = pd.read_csv(STOCK_FILE)
-                    return normalize_stock_df(df)
-            # If nothing found, start fresh
-            return normalize_stock_df(pd.DataFrame(columns=REQUIRED_STOCK_COLS))
+        return normalize_stock_df(pd.DataFrame(columns=REQUIRED_STOCK_COLS))
 
 def save_stock(df):
-    # Save main file
-    df.to_csv(STOCK_FILE, index=False)
-    load_stock.clear()
+    conn = sqlite3.connect("stock_data.db")
+    df.to_sql("stock", conn, if_exists="replace", index=False)
+    conn.close()
 
-    # Auto-backup with timestamp
+    df.to_csv(STOCK_FILE, index=False)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
+    os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(STOCK_FILE, f"{backup_folder}/stock_export.csv")
 
 
-@st.cache_data
 def load_sales():
-    if not os.path.exists(SALES_FILE) or os.path.getsize(SALES_FILE) == 0:
+    conn = sqlite3.connect("stock_data.db")
+    try:
+        df = pd.read_sql("SELECT * FROM sales", conn)
+        conn.close()
+        return df
+    except Exception:
+        conn.close()
+        if os.path.exists(SALES_FILE) and os.path.getsize(SALES_FILE) > 0:
+            return pd.read_csv(SALES_FILE)
         cols = ["Date", "Item Code", "Item", "Quantity Sold",
                 "Selling Price", "Total", "Customer", "Issued By"]
         return pd.DataFrame(columns=cols)
-    df = pd.read_csv(SALES_FILE)
-    return df
-
 
 def save_sales(df):
-    df.to_csv(SALES_FILE, index=False)
-    load_sales.clear()
+    conn = sqlite3.connect("stock_data.db")
+    df.to_sql("sales", conn, if_exists="replace", index=False)
+    conn.close()
 
-    # Auto-backup sales too
+    df.to_csv(SALES_FILE, index=False)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
-    ensure_dir(backup_folder)
+    os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
 # ============================================================
 # UNDO SUPPORT
