@@ -365,6 +365,13 @@ def save_sales(df):
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
     os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
+     # ✅ Auto commit and push changes to GitHub
+    try:
+        subprocess.run(["git", "add", "stock_data.db", STOCK_FILE, BACKUP_DIR], check=True)
+        subprocess.run(["git", "commit", "-m", f"Auto backup at {timestamp}"], check=True)
+        subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print("Git commit/push failed:", e)
 # ============================================================
 # UNDO SUPPORT
 # ============================================================
