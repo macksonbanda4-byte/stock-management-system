@@ -385,6 +385,9 @@ def save_sales(df):
     os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
 
+    # ✅ Call helper
+    auto_commit_push(timestamp)
+
     # ✅ Auto commit and push ALL key files
     try:
         subprocess.run([
