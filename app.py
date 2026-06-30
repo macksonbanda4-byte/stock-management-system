@@ -76,9 +76,20 @@ ensure_all_folders()
 # ============================================================
 # INITIALIZE DATABASE TABLES
 # ============================================================
-def initialize_database():
-    conn = sqlite3.connect("stock_data.db")
+# ============================================================
+# PERSISTENT STORAGE FIX
+# ============================================================
+
+DB_FILE = "stock_data.db"
+
+def get_connection():
+    """Always return a persistent SQLite connection."""
+    return sqlite3.connect(DB_FILE, check_same_thread=False)
+
+def ensure_tables():
+    conn = get_connection()
     cursor = conn.cursor()
+    # Stock table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS stock (
         Category TEXT, Item TEXT, ItemCode TEXT, Brand TEXT,
@@ -88,6 +99,7 @@ def initialize_database():
         Location TEXT, Supplier TEXT
     )
     """)
+    # Sales table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS sales (
         Date TEXT, ItemCode TEXT, Item TEXT,
@@ -98,6 +110,8 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+# Call once at startup
+ensure_tables()
 initialize_database()
 # ============================================================
 # PASSWORD HASHING
@@ -357,6 +371,9 @@ def save_stock(df):
     os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(STOCK_FILE, f"{backup_folder}/stock_export.csv")
 
+    # ✅ Call helper
+    auto_commit_push(timestamp)
+
 
 def load_sales():
     conn = sqlite3.connect("stock_data.db")
@@ -384,9 +401,6 @@ def save_sales(df):
     backup_folder = f"{BACKUP_DIR}/backup_{timestamp}"
     os.makedirs(backup_folder, exist_ok=True)
     shutil.copy(SALES_FILE, f"{backup_folder}/sales.csv")
-
-    # ✅ Call helper
-    auto_commit_push(timestamp)
 
     # ✅ Auto commit and push ALL key files
     try:
