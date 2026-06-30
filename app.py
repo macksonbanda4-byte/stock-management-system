@@ -491,6 +491,32 @@ def auto_restore_from_backup():
 # Call once at startup
 auto_restore_from_backup()
 # ============================================================
+# BACKUP CLEANUP (KEEP LAST 5)
+# ============================================================
+
+def cleanup_old_backups(max_backups: int = 5):
+    """Keep only the most recent backups and remove older ones."""
+    if not os.path.exists("backups"):
+        return
+
+    backups = sorted(
+        [f for f in os.listdir("backups") if f.startswith("backup_")],
+        reverse=True
+    )
+
+    if len(backups) > max_backups:
+        old_backups = backups[max_backups:]
+        for folder in old_backups:
+            path = os.path.join("backups", folder)
+            try:
+                shutil.rmtree(path)
+                print(f"🧹 Removed old backup: {folder}")
+            except Exception as e:
+                print(f"⚠️ Could not remove {folder}: {e}")
+
+# Call once at startup
+cleanup_old_backups()
+# ============================================================
 # AUTO‑RESTORE FROM BACKUP
 # ============================================================
 
