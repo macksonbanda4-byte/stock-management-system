@@ -452,7 +452,80 @@ def save_sales(df):
         subprocess.run(["git", "push"], check=True)
     except Exception as e:
         print("Git commit/push failed:", e)
+        #clean up old backups
+        cleanup_old_backups()
+        # ============================================================
+# AUTO‑RESTORE FROM BACKUP
+# ============================================================
 
+def auto_restore_from_backup():
+    """Restore database tables from latest backup if DB is missing or empty."""
+    if not os.path.exists(DB_FILE):
+        ensure_tables()
+        latest_backup = None
+        # Find the most recent backup folder
+        if os.path.exists("backups"):
+            backups = sorted(
+                [f for f in os.listdir("backups") if f.startswith("backup_")],
+                reverse=True
+            )
+            if backups:
+                latest_backup = os.path.join("backups", backups[0])
+
+        if latest_backup:
+            stock_path = os.path.join(latest_backup, "stock_export.csv")
+            sales_path = os.path.join(latest_backup, "sales.csv")
+
+            conn = get_connection()
+            if os.path.exists(stock_path):
+                df_stock = pd.read_csv(stock_path)
+                df_stock.to_sql("stock", conn, if_exists="replace", index=False)
+            if os.path.exists(sales_path):
+                df_sales = pd.read_csv(sales_path)
+                df_sales.to_sql("sales", conn, if_exists="replace", index=False)
+            conn.close()
+            print(f"✅ Restored database from {latest_backup}")
+        else:
+            print("⚠️ No backup found — starting fresh.")
+
+# Call once at startup
+auto_restore_from_backup()
+# ============================================================
+# AUTO‑RESTORE FROM BACKUP
+# ============================================================
+
+def auto_restore_from_backup():
+    """Restore database tables from latest backup if DB is missing or empty."""
+    if not os.path.exists(DB_FILE):
+        ensure_tables()
+        latest_backup = None
+        # Find the most recent backup folder
+        if os.path.exists("backups"):
+            backups = sorted(
+                [f for f in os.listdir("backups") if f.startswith("backup_")],
+                reverse=True
+            )
+            if backups:
+                latest_backup = os.path.join("backups", backups[0])
+
+        if latest_backup:
+            stock_path = os.path.join(latest_backup, "stock_export.csv")
+            sales_path = os.path.join(latest_backup, "sales.csv")
+
+            conn = get_connection()
+            if os.path.exists(stock_path):
+                df_stock = pd.read_csv(stock_path)
+                df_stock.to_sql("stock", conn, if_exists="replace", index=False)
+            if os.path.exists(sales_path):
+                df_sales = pd.read_csv(sales_path)
+                df_sales.to_sql("sales", conn, if_exists="replace", index=False)
+            conn.close()
+            print(f"✅ Restored database from {latest_backup}")
+        else:
+            print("⚠️ No backup found — starting fresh.")
+
+# Call once at startup
+auto_restore_from_backup()
 # ============================================================
 # UNDO SUPPORT
 # ============================================================
