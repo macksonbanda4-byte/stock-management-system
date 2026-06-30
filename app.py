@@ -1239,7 +1239,9 @@ if __name__ == "_main_":
 # SYSTEM STATUS SECTION
 # ============================================================
 
-def system_status_section():
+if _name_ == "_main_":
+    main()                 # runs your dashboard
+    system_status_section()
     st.sidebar.header("🧭 System Status")
     st.sidebar.info("Database and backup system are active.")
     st.sidebar.success("✅ Auto‑restore and cleanup enabled.")
