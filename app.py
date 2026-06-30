@@ -490,10 +490,7 @@ def auto_restore_from_backup():
 
 # Call once at startup
 auto_restore_from_backup()
-# ============================================================
-# BACKUP CLEANUP (KEEP LAST 5)
-# ============================================================
-============================================
+#============================================
 # BACKUP CLEANUP (KEEP LAST 5) WITH STREAMLIT MESSAGE
 # ============================================================
 
@@ -524,7 +521,6 @@ def cleanup_old_backups(max_backups: int = 5):
             st.success("✅ Backup cleanup complete — nothing to remove.")
     else:
         st.success("✅ Backup folder is tidy — no cleanup needed.")
-
 # Call once at startup
 cleanup_old_backups()
 # ============================================================
