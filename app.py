@@ -1139,7 +1139,6 @@ def main():
 
     user = st.session_state["username"]
     role = st.session_state["role"]
-
     # ============================================================
     # DASHBOARD
     # ============================================================
@@ -1229,6 +1228,15 @@ def main():
     elif menu == "Logout":
         st.session_state.clear()
         st.rerun()
+        # ============================================================
+# MAIN ENTRY POINT
+# ============================================================
+
+if _name_ == "_main_":
+    # Run the dashboard
+    # Make sure you have defined user, role, df_stock, df_sales earlier in your main function
+    # If you already have a main() wrapper, just call main() here instead
+    system_status_section()
 
 # ============================================================
 # SYSTEM STATUS SECTION
