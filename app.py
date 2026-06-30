@@ -1230,12 +1230,15 @@ def main():
         st.session_state.clear()
         st.rerun()
 
+# ============================================================
+# SYSTEM STATUS SECTION
+# ============================================================
 
-# ============================================================
-# RUN APP
-# ============================================================
-# ============================================================
-# MAIN ENTRY POINT
-# ============================================================
-if __name__ == "__main__":
-    main()
+def system_status_section():
+    st.sidebar.header("🧭 System Status")
+    st.sidebar.info("Database and backup system are active.")
+    st.sidebar.success("✅ Auto‑restore and cleanup enabled.")
+    st.sidebar.caption("Backups are stored in /backups and limited to the last 5 snapshots.")
+
+# Call once at the end of your main layout
+system_status_section()
