@@ -1232,7 +1232,7 @@ def main():
 # MAIN ENTRY POINT
 # ============================================================
 
-if _name_ == "_main_":
+if __name__ == "_main_":
     # Run the dashboard
     # Make sure you have defined user, role, df_stock, df_sales earlier in your main function
     # If you already have a main() wrapper, just call main() here instead
