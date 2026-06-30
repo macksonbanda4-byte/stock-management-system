@@ -1239,15 +1239,13 @@ if __name__ == "_main_":
 # SYSTEM STATUS SECTION
 # ============================================================
 
-if __name__ == "_main_":
-    main()                 # runs your dashboard
-    system_status_section()
-    st.sidebar.header("🧭 System Status")
-    st.sidebar.info("Database and backup system are active.")
-    st.sidebar.success("✅ Auto‑restore and cleanup enabled.")
-    st.sidebar.caption("Backups are stored in /backups and limited to the last 5 snapshots.")
+# ============================================================
+# MAIN ENTRY POINT
+# ============================================================
+# ============================================================
+# MAIN ENTRY POINT
+# ============================================================
 
-# Call once at the end of your main layout
-if __name__ == "_main_":
+if __name__ == "__main__":
     main()                 # runs your dashboard
-    system_status_section()
+    system_status_section()  # shows sidebar status
