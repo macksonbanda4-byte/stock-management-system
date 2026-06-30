@@ -1248,4 +1248,6 @@ if __name__ == "_main_":
     st.sidebar.caption("Backups are stored in /backups and limited to the last 5 snapshots.")
 
 # Call once at the end of your main layout
-system_status_section()
+if __name__ == "_main_":
+    main()                 # runs your dashboard
+    system_status_section()
