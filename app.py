@@ -112,7 +112,6 @@ def ensure_tables():
 
 # Call once at startup
 ensure_tables()
-initialize_database()
 # ============================================================
 # PASSWORD HASHING
 # ============================================================
