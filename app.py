@@ -1229,6 +1229,6 @@ def main():
 # MAIN ENTRY POINT
 # ============================================================
 
-if __name__ == "_main_":
+if __name__ == "__main__":
     main()                 # runs your dashboard
     system_status_section()  # shows sidebar status
