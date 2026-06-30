@@ -493,6 +493,9 @@ auto_restore_from_backup()
 # ============================================================
 # BACKUP CLEANUP (KEEP LAST 5)
 # ============================================================
+============================================
+# BACKUP CLEANUP (KEEP LAST 5) WITH STREAMLIT MESSAGE
+# ============================================================
 
 def cleanup_old_backups(max_backups: int = 5):
     """Keep only the most recent backups and remove older ones."""
@@ -506,13 +509,21 @@ def cleanup_old_backups(max_backups: int = 5):
 
     if len(backups) > max_backups:
         old_backups = backups[max_backups:]
+        removed = []
         for folder in old_backups:
             path = os.path.join("backups", folder)
             try:
                 shutil.rmtree(path)
-                print(f"🧹 Removed old backup: {folder}")
+                removed.append(folder)
             except Exception as e:
-                print(f"⚠️ Could not remove {folder}: {e}")
+                st.warning(f"⚠️ Could not remove {folder}: {e}")
+
+        if removed:
+            st.info(f"🧹 Removed old backups: {', '.join(removed)}")
+        else:
+            st.success("✅ Backup cleanup complete — nothing to remove.")
+    else:
+        st.success("✅ Backup folder is tidy — no cleanup needed.")
 
 # Call once at startup
 cleanup_old_backups()
