@@ -1233,11 +1233,8 @@ def main():
 # ============================================================
 
 if __name__ == "_main_":
-    # Run the dashboard
-    # Make sure you have defined user, role, df_stock, df_sales earlier in your main function
-    # If you already have a main() wrapper, just call main() here instead
+    main()                 # runs your dashboard
     system_status_section()
-
 # ============================================================
 # SYSTEM STATUS SECTION
 # ============================================================
