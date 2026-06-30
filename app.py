@@ -1239,7 +1239,7 @@ if __name__ == "_main_":
 # SYSTEM STATUS SECTION
 # ============================================================
 
-if _name_ == "_main_":
+if __name__ == "_main_":
     main()                 # runs your dashboard
     system_status_section()
     st.sidebar.header("🧭 System Status")
